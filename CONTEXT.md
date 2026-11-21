@@ -1,6 +1,6 @@
 # Composants — l'arbre de fabrication (nom provisoire)
 
-Chaque objet décomposé en ses composants, jusqu'aux matières premières : l'arbre, mes projets, ce qu'il reste à réunir. Add-on solo : il ne sait rien des commandes ni des contrats ; Handshake s'y greffe quand les deux sont là. Né des grills du 20 et du 21/11/2026 (projets sortis de Handshake).
+Chaque objet décomposé en ses composants, jusqu'aux matières premières : l'arbre, mes projets, ce qu'il reste à réunir. Add-on solo : il sert sans Handshake ; quand les deux sont là, les commandes de Handshake apparaissent dans ses projets. Né des grills du 20 et du 21/11/2026 (projets sortis de Handshake).
 
 ## Language
 
