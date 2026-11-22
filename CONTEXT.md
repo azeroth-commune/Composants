@@ -10,6 +10,10 @@ Chaque objet décomposé en ses composants, jusqu'aux matières premières : l'a
 Ce que je veux faire fabriquer (des objets × quantités), avec son arbre, ses blocs et mes choix de case ; une seule page pour le suivre, et ses commandes quand Handshake est là.
 _Avoid_: liste, suivi
 
+**Fabrication** (ligne d'un projet):
+Une ligne « recette × nombre de fois » au lieu de « objet × quantité » : sa case racine est toujours fabriquée (jamais achetée toute faite), et une recette sans objet produit (un enchantement) n'a pour cases que ses composants ; c'est ainsi qu'une tranche de montée tient son projet.
+_Avoid_: craft, ligne forcée
+
 **Brouillon**:
 Le projet de passage, unique et toujours là, où atterrit tout Ctrl+clic droit sur un objet ; on le vide ou on en retire des lignes, et « + » en fait un vrai projet. Il n'est pas dans la liste des projets, et on n'y commande rien.
 _Avoid_: projet temporaire, scratch
@@ -36,6 +40,32 @@ _Avoid_: groupe, bande
 Ce qu'on décide pour une case de l'arbre : la décomposer ou l'acheter toute faite ; sans choix, le calcul des prix décide. Un choix de case appartient à un projet, jamais à tout le joueur. Apporter une case n'est pas un choix de case : c'est un terme de la commande Handshake (voir Apport dans `../Handshake/CONTEXT.md`).
 _Avoid_: force, choix forcé
 
+### Montée (add-on Maîtrise, à venir ; ces mots iront dans son glossaire)
+
+**Montée**:
+Faire passer un métier d'un personnage d'un niveau à n'importe quel autre, pas seulement aux rangs (75, 150, 225, 300).
+_Avoid_: leveling, guide
+
+**Route**:
+La suite de recettes d'une montée, point par point, la moins chère aux prix d'achat du moment, réemplois compris et revente au marchand déduite (jamais celle de l'HV, incertaine) ; calculée, jamais écrite à la main, et seulement avec des recettes dont on sait où les apprendre.
+_Avoid_: guide, chemin, étapes
+
+**Tranche**:
+La part de la route qu'on fait maintenant, du niveau actuel jusqu'au curseur ; optimisée seule avec les prix du moment, elle devient un projet tenu dans Composants (ses Besoins = ce qu'il faut pour cette tranche seulement).
+_Avoid_: étape, session, palier (réservé aux paliers de prix de l'HV)
+
+### Entraide
+
+**Compagnonnage**:
+Une équipe de personnages qui s'aident à monter leurs métiers, formée à n'importe quel niveau ; distincte d'une Compagnie (voir `../Compagnie/CONTEXT.md`) : un personnage peut être dans les deux, et un Compagnonnage ne fait pas forcément l'aventure ensemble.
+_Avoid_: compagnon (les mascottes du jeu), Compagnie de métiers, corporation, guilde
+
+## Mis de côté
+
+- Le **Compagnonnage** (22/11/2026) : à prix réels de l'HV, des routes de montée optimisées ensemble ne coûtent que 1 à 3 % de moins que les mêmes routes optimisées chacun de son côté ; ce qui coûte cher (barres, cuirs, étoffes) n'est produit par aucun métier d'artisanat du groupe, et l'Enchantement, seul preneur des verts des autres, ne pèse qu'environ 4 % du total. À reprendre si le partage de la récolte (minerai, cuir, étoffe) devient l'enjeu.
+
 ## Ambiguïtés relevées
+
+- Monter ses métiers ensemble aurait pu être une deuxième sorte de Compagnie. Tranché le 22/11/2026 : c'est un **Compagnonnage**, un concept distinct ; la Compagnie reste l'équipe de l'aventure (un seul à la fois, dès le niveau 1, uniquement des quêtes).
 
 - « Brouillon » désignait aussi, dans Handshake, un contrat préparé mais pas envoyé. Tranché le 20/11/2026 : le mot va au Brouillon des projets ; un tel contrat est **préparé**.

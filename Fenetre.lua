@@ -139,8 +139,9 @@ function ns.layoutGraph(g, bands)
 end
 
 -- Le dessin de l'arbre d'un projet (res = ns.projetArbre, Projet.lua), sans rien afficher (testé hors jeu dans check.lua).
--- Étages : les lignes du projet en 0, un objet juste à droite de son parent le plus à droite. Bandes : un bloc = ses
--- cases + ce qui n'est pas fabriqué sous elles (rattaché à son premier parent), puis le reste (acheté ou en stock).
+-- Étages : les lignes du projet en 0 (et les composants d'un enchantement, qui n'a pas de case), un objet juste à droite
+-- de son parent le plus à droite. Bandes : un bloc = ses cases + ce qui n'est pas fabriqué sous elles (rattaché à son
+-- premier parent), puis le reste (acheté ou en stock).
 -- Chaque bloc reçoit sa couleur (index), son titre (label) et ses cases dessinées (cards).
 function ns.dessinArbre(res)
   local list, edges = res.cases, res.liens
@@ -150,7 +151,7 @@ function ns.dessinArbre(res)
     local changed = false
     for _, n in ipairs(list) do
       if n.kind == "item" then
-        local c = 1
+        local c = #n.parents == 0 and 0 or 1
         for _, p in ipairs(n.parents) do c = math.max(c, p.col + 1) end
         if c ~= n.col then n.col, changed = c, true end
       end
@@ -242,6 +243,7 @@ end
 -- Ce que fait un clic sur la case : revenir au calcul si le choix était forcé, sinon forcer l'inverse.
 local function toggleOf(n)
   if n.apport > 0 then return end -- apporté par une commande Handshake : Ctrl+clic pour le reprendre
+  if n.fabrication then return end -- une fabrication du projet : toujours fabriquée
   if n.choix then return "reset" end
   if n.made > 0 then return "acheter" end
   if n.craftable then return "fabriquer" end -- même en stock : « + » le fabrique au lieu de le prendre

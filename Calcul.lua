@@ -102,7 +102,23 @@ end
 -- cost = nil : ni prix ni recette. Chaque recette essayée travaille sur sa propre copie du stock ;
 -- celle de la meilleure option est gardée. craftable = une recette existe (le « + » de la fenêtre).
 -- ctx.force[itemID] = "fabriquer" | "acheter" : le choix de case du projet l'emporte sur les prix.
-local function plan(id, qty, ctx, depth, path)
+local plan
+-- Les composants de crafts fabrications de la recette rec : leur coût, leurs plans, et s'il en manque un (ni prix ni
+-- recette, ou coût incomplet).
+local function composants(rec, crafts, ctx, depth, path)
+  local total, parts, missing = 0, {}, false
+  for _, rg in ipairs(rec.r.reagents) do
+    local p = rg.id and plan(rg.id, rg.qty * crafts, ctx, depth + 1, path)
+    if p then
+      total = total + (p.cost or 0)
+      parts[#parts + 1] = p
+    end
+    if not p or not p.cost or p.incomplete then missing = true end
+  end
+  return total, parts, missing
+end
+
+function plan(id, qty, ctx, depth, path)
   -- Une case retirée de l'arbre par celui qui le demande (Handshake : un apport de la commande) : elle et tout ce qu'il y
   -- a dessous sortent du calcul.
   if depth > 0 and ctx.apports and ctx.apports[id] then
@@ -135,15 +151,7 @@ local function plan(id, qty, ctx, depth, path)
     local per = math.max(1, rec.r.made_min or 1)
     local crafts = math.ceil(need / per)
     ctx.stock = copyStock(base)
-    local total, parts, missing = 0, {}, false
-    for _, rg in ipairs(rec.r.reagents) do
-      local p = rg.id and plan(rg.id, rg.qty * crafts, ctx, depth + 1, path)
-      if p then
-        total = total + (p.cost or 0)
-        parts[#parts + 1] = p
-      end
-      if not p or not p.cost or p.incomplete then missing = true end
-    end
+    local total, parts, missing = composants(rec, crafts, ctx, depth, path)
     -- Une recette complète l'emporte si elle est moins chère ; une recette où un composant n'a ni prix ni recette
     -- n'est gardée que faute de mieux (coût « incomplet »), pour voir l'arbre quand même.
     local better = not missing and (not node.cost or node.incomplete or total < node.cost)
@@ -158,6 +166,19 @@ local function plan(id, qty, ctx, depth, path)
   return node
 end
 ns.plan = plan
+
+-- Une fabrication (ligne « recette × nombre de fois », CONTEXT.md) : sa case racine est toujours fabriquée avec cette
+-- recette, fois fois ; ni stock pris, ni achat, ni choix de case. Une recette sans objet produit (un enchantement) : id = nil,
+-- seuls ses composants comptent (Projet.lua n'en fait pas de case). Une recette absente de la base : coût incomplet.
+local function fabrication(key, fois, ctx)
+  local r = ns.recipes()[key]
+  local rec = { key = key, r = r or { reagents = {} }, known = ctx.known[key] }
+  local id = rec.r.output
+  local total, parts, missing = composants(rec, fois, ctx, 0, id and { [id] = true } or {})
+  local qty = fois * math.max(1, rec.r.made_min or 1)
+  return { id = id, qty = qty, have = { 0, 0, 0 }, need = qty, cost = total, how = "fabriquer", recipe = rec.r, recipeKey = key,
+    known = rec.known, crafts = fois, parts = parts, incomplete = (missing or not r) or nil, craftable = true, fabrication = true }
+end
 
 local function shopping(p, out)
   if p.how == "fabriquer" then
@@ -197,12 +218,13 @@ local function buildStock(opts)
   return stock
 end
 
--- Calcul complet d'une ligne d'un projet (Projet.lua), avec ses choix de case et les cases retirées (apports).
--- stock : celui laissé par la ligne précédente (nil = le construire) ; il est renvoyé pour la suivante.
-function ns.craftPlan(id, qty, opts, stock, apports, choix, vendors)
-  local market = ns.market()
-  local ctx = { market = market and market.items, by = recipesByOutput(true, knownRecipes()), unlearned = opts.unlearned, stock = stock or buildStock(opts),
-    force = choix, apports = apports, vendors = vendors or lib:PrixMarchands() }
-  local node = plan(id, qty, ctx, 0, {})
+-- Calcul complet d'une ligne l d'un projet (Projet.lua) : un objet { id, qty } ou une fabrication { recette, fois }, avec
+-- ses choix de case et les cases retirées (apports). stock : celui laissé par la ligne précédente (nil = le construire) ; il
+-- est renvoyé pour la suivante.
+function ns.craftPlan(l, opts, stock, apports, choix, vendors)
+  local market, known = ns.market(), knownRecipes()
+  local ctx = { market = market and market.items, by = recipesByOutput(true, known), known = known, unlearned = opts.unlearned,
+    stock = stock or buildStock(opts), force = choix, apports = apports, vendors = vendors or lib:PrixMarchands() }
+  local node = l.recette and fabrication(l.recette, l.fois, ctx) or plan(l.id, l.qty, ctx, 0, {})
   return node, market, ctx.stock, ctx.vendors
 end

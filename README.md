@@ -31,8 +31,9 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 
 Un seul global, `Composants`, disponible dès le chargement (un add-on qui s'en sert le déclare en `OptionalDeps` ou le
 lit plus tard, à l'entrée en jeu). Seul ce qui suit est promis ; l'intérieur peut changer. Un projet `p` est une table
-qu'on lit (`p.id` son identité stable, jamais redonnée ; `p.name`, `p.lines = { { id, qty } }`, `p.choix`, `p.tenu`) et
-qu'on ne modifie que par ces fonctions.
+qu'on lit (`p.id` son identité stable, jamais redonnée ; `p.name`, `p.lines`, `p.choix`, `p.tenu`) et qu'on ne modifie
+que par ces fonctions. Une ligne est un objet `{ id = itemID, qty = quantité }` ou une **fabrication**
+`{ recette = sortID, fois = nombre de fois }` (la clé de la base des recettes du socle).
 
 ```lua
 local C = Composants
@@ -51,6 +52,9 @@ C.Peut(p, quoi)              -- quoi = "lignes" ou "choix" : true, ou false et l
 -- Projet tenu : un autre add-on prend les lignes en donnant une raison ; ajouter, retirer, changer une quantité sont
 -- refusés avec cette raison, telle quelle ; les choix de case restent libres. Le projet ne sait pas pourquoi il est tenu.
 C.Tenir(p, raison, lignes)   -- lignes : les nouvelles (remises à jour à chaque appel, les choix restent), ou nil
+-- Une ligne fabrication : sa case racine toujours fabriquée avec cette recette (ni stock, ni achat ; C.Choix(p, son objet,
+-- "acheter") refuse) ; sans objet produit (un enchantement), seuls ses composants sont des cases. Dessous : libres.
+C.Tenir(p, "Tranche 75 → 90", { { recette = 2659, fois = 5 }, { recette = 7420, fois = 3 } })
 C.Tenir(p, nil)              -- lâché
 -- L'arbre et les blocs : p = un projet, ou toute table { lines, choix } (la part d'une commande)
 local res = C.Arbre(p, sansStock, apports)

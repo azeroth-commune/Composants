@@ -188,6 +188,58 @@ test("Besoins de deux projets : la petite fenêtre, un « – » s'y voit aussit
     ComposantsDB.besoins = {}
 end) end)
 
+-- Fabrication (CONTEXT.md) : un projet tenu par un autre add-on (une tranche de montée de Maîtrise), aux lignes « recette ×
+-- nombre de fois ». La fonte du bronze vient de la réserve du socle ; l'enchantement (sans objet produit, pas encore dans
+-- la réserve) est ajouté aux recettes vues le temps du test.
+test("projet tenu à lignes fabrication : la racine toujours fabriquée, l'enchantement par ses composants", function() sansRecettes(function()
+    AzerothCommuneDB.recipes = AzerothCommuneDB.recipes or {}
+    local avant = AzerothCommuneDB.recipes[7420]
+    AzerothCommuneDB.recipes[7420] = { name = "Enchanter le plastron - Vie mineure", profession = "Enchantement", reagents = { { id = 10940, qty = 1 } } }
+    local p = Composants.NouveauProjet({ name = "Tranche d'essai" })
+    local ok, err = pcall(function()
+        Composants.Tenir(p, "tenu par le test", { { recette = 2659, fois = 5 }, { recette = 7420, fois = 3 } })
+        Composants.Ouvrir(p.id)
+        assertTrue(affiche("Tranche d'essai"))
+        local racines, de = {}, {}
+        for _, c in ipairs(cases()) do
+            if c.node.kind == "target" then racines[#racines + 1] = c end
+            de[c.node.id] = c
+        end
+        assertEquals(1, #racines, "une seule case racine : la barre de bronze (l'enchantement n'en a pas)")
+        local barre = racines[1]
+        assertEquals(2841, barre.node.id)
+        assertEquals(10, barre.node.made, "fabriquée : 5 fontes, 2 barres chacune")
+        assertNotNil(de[10940], "la poussière de l'enchantement")
+        assertEquals(0, #de[10940].node.parents, "sans case au-dessus")
+        -- La racine : un clic ne la passe pas en « acheter », l'API refuse avec une raison.
+        barre:Click()
+        assertNil(p.choix and p.choix[2841], "clic sur la racine : aucun choix")
+        local acheter, raison = Composants.Choix(p, 2841, "acheter")
+        assertEquals(false, acheter)
+        assertType("string", raison)
+        -- Dessous, libre : la barre de cuivre achetée toute faite, puis retour au calcul.
+        assertNotNil(de[2840], "la barre de cuivre sous le bronze")
+        assertTrue(de[2840].node.made > 0, "témoin : le cuivre se fond")
+        de[2840]:Click()
+        assertEquals("acheter", p.choix and p.choix[2840])
+        for _, c in ipairs(cases()) do if c.node.id == 2840 then c:Click() end end
+        assertNil(p.choix and p.choix[2840])
+        -- Les Besoins : la poussière à réunir.
+        ComposantsDB.besoins = {}
+        dansBesoins():Click()
+        bouton("Besoins"):Click()
+        assertNotNil(lignesBesoins()[10940], "la poussière dans les Besoins")
+        -- La barre de bronze n'y paraît que par sa recette à apprendre (personne ne la connaît ici), jamais à réunir.
+        local barreB = lignesBesoins()[2841]
+        assertTrue(barreB == nil or (barreB.info or ""):find("^Pour fabriquer") ~= nil, "la barre de bronze, fabriquée : rien à réunir")
+        ComposantsDB.besoins = {}
+    end)
+    AzerothCommuneDB.recipes[7420] = avant
+    Composants.Tenir(p, nil)
+    Composants.Supprimer(p.id)
+    if not ok then error(err, 0) end
+end) end)
+
 test("la barre de recherche propose les objets de la recherche du socle", function() sansRecettes(function()
     SlashCmdList.COMPOSANTS("demo ceinture")
     local box = tous(ComposantsFrame, function(c) return c:GetObjectType() == "EditBox" and c.recherche ~= nil end)[1]
