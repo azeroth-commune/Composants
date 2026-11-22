@@ -11,8 +11,9 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
   voir le README de Handshake). Sans lui, rien de tout ça n'apparaît.
 - **Pour le joueur** : `/composants` (ou `/compo`) ouvre la fenêtre ; `/composants <objet> [quantité] [tout]` l'ajoute au
   projet affiché ; `/composants demo [set|ceinture|hasard]` crée un projet d'essai ; Ctrl+clic droit sur un objet
-  n'importe où l'ajoute au projet affiché. Bouton de minicarte et options : ceux, communs, d'Azeroth Commune.
-- **Données propres** : `ComposantsDB` (projets, options de calcul). Rien de relevé n'y est gardé (ADR 0002 de l'atelier).
+  n'importe où le met au Brouillon (bouton « Brouillon » ; « + » en fait un projet, « Vider » le vide ; on n'y commande
+  rien). Bouton de minicarte et options : ceux, communs, d'Azeroth Commune.
+- **Données propres** : `ComposantsDB` (projets, Brouillon, options de calcul). Rien de relevé n'y est gardé (ADR 0002 de l'atelier).
 
 ## Fichiers
 
@@ -20,7 +21,7 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 |---|---|
 | `Donnees.lua` | accès au socle (recettes, inventaires, métiers, HV, noms d'objets), `ComposantsDB` |
 | `Calcul.lua` | « acheter ou fabriquer » : le plan le moins cher d'un objet, choix entre recettes équivalentes, boucles écartées |
-| `Projet.lua` | les projets (identité stable, lignes, choix de case, projet tenu, signal de changement), les cases, les blocs, l'arbre |
+| `Projet.lua` | les projets (identité stable, lignes, choix de case, projet tenu, signal de changement), le Brouillon, les cases, les blocs, l'arbre |
 | `Recherche.lua` | la barre de recherche d'objets (sur `AzerothCommune.ChercherObjets`) |
 | `Fenetre.lua` | la fenêtre des projets, son dessin ; la barre des commandes de Handshake quand il est là ; Ctrl+clic droit ; `/composants` |
 | `Besoins.lua` | la fenêtre des Besoins du projet affiché |

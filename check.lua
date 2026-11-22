@@ -468,23 +468,53 @@ do
 end
 print("Composants : API publique OK")
 
--- Ctrl+clic droit sur un objet (lien) : il entre dans le projet affiché, une fois ; dans un projet tenu, un nouveau projet.
+-- Le Brouillon (CONTEXT.md) : Ctrl+clic droit sur un objet (lien) l'y met, une fois, jamais dans le projet affiché ; il
+-- n'est pas dans la liste des projets ni dans « < » et « > » ; « + » en fait un vrai projet (lignes et choix de case) et
+-- il se vide.
 do
   C_Item.GetItemInfoInstant = function() return nil, nil, nil, nil, nil, 4 end -- une arme, pas une recette
   local ouvrir = ns.openCraftWindow
   ns.openCraftWindow = noop -- pas d'interface hors jeu
+  local b = ns.brouillon()
+  assert(ns.estBrouillon(b) and #b.lines == 0, "un Brouillon, vide au départ")
   local p = Composants.NouveauProjet()
   ns.ctrlClicDroit(link(5541, "Marteau"))
+  assert(#p.lines == 0 and #b.lines == 1 and b.lines[1].id == 5541 and b.lines[1].qty == 1, "dans le Brouillon, pas le projet affiché")
+  ns.projetQuantite(b, 1, 3)
   ns.ctrlClicDroit(link(5541, "Marteau"))
-  assert(#p.lines == 1 and p.lines[1].id == 5541 and p.lines[1].qty == 1, "dans le projet affiché, une fois")
-  Composants.Tenir(p, "tenu")
-  ns.ctrlClicDroit(link(2841, "Barre de bronze"))
-  local q = ns.projetCourant()
-  assert(q ~= p and #p.lines == 1 and q.lines[1].id == 2841, "projet tenu : un nouveau projet")
+  assert(#b.lines == 1 and b.lines[1].qty == 3, "déjà dans le Brouillon : sa quantité ne bouge pas")
   ns.ctrlClicDroit("pas un lien")
+  ns.ctrlClicDroit(link(2841, "Barre de bronze"))
+  assert(#b.lines == 2 and #p.lines == 0, "deux objets au Brouillon")
   ns.openCraftWindow = ouvrir
+  -- Hors de la liste des projets ; on l'affiche par son bouton, « < » et « > » n'y passent jamais.
+  for _, q in ipairs(Composants.Projets()) do assert(q ~= b, "le Brouillon dans la liste des projets") end
+  assert(ns.ouvrirBrouillon() == b and ns.projetCourant() == b, "le Brouillon s'affiche par son bouton")
+  local n = #Composants.Projets()
+  for _ = 1, n + 1 do assert(ns.changerProjet(1) ~= b, "« > » passe par le Brouillon") end
+  ns.ouvrirBrouillon()
+  for _ = 1, n + 1 do assert(ns.changerProjet(-1) ~= b, "« < » passe par le Brouillon") end
+  -- On y retire une ligne, on le vide.
+  assert(ns.projetRetirer(b, 2) and #b.lines == 1, "une ligne retirée")
+  ns.viderBrouillon()
+  assert(#b.lines == 0, "vidé")
+  -- « + » : un vrai projet avec ses lignes et ses choix de case ; le Brouillon se vide.
+  ns.projetAjouter(b, 5541, 2)
+  ns.projetChoix(b, 2841, "acheter")
+  ns.ouvrirBrouillon()
+  local q = ns.brouillonEnProjet()
+  assert(q and not ns.estBrouillon(q) and Composants.Projets()[#Composants.Projets()] == q, "un vrai projet, dans la liste")
+  assert(#q.lines == 1 and q.lines[1].id == 5541 and q.lines[1].qty == 2 and q.choix[2841] == "acheter", "ses lignes, ses choix de case")
+  assert(#b.lines == 0 and b.choix == nil and ns.projetCourant() == q, "le Brouillon vidé, le projet affiché")
+  assert(ns.brouillonEnProjet() == nil and #Composants.Projets() == n + 1, "Brouillon vide : pas de projet vide")
+  -- On n'y commande rien : Composants ne demande jamais à Handshake les apports du Brouillon.
+  local demande
+  Handshake = { Apports = function(x) demande = x return {} end }
+  assert(ns.apportsHandshake(b) == nil and not demande, "pas d'apports pour le Brouillon")
+  assert(ns.apportsHandshake(q) and demande == q, "un projet, si")
+  Handshake = nil
 end
-print("Composants : Ctrl+clic droit OK")
+print("Composants : Brouillon, Ctrl+clic droit OK")
 
 -- La TOC : catégorie Métiers, le socle requis, Handshake facultatif, ses données propres ; jamais tests/ ni check.lua.
 assert(TOC:find("\n## Title: Composants\n", 1, true) and TOC:find("\n## Category: Professions\n## Category-frFR: Métiers\n", 1, true), "titre, catégorie")

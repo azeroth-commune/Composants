@@ -5,10 +5,11 @@
 -- fenêtre (Fenetre.lua) ne fait que dessiner.
 -- Enregistrés dans ComposantsDB.projets[i] = { id (son identité), name, lines = { { id, qty } }, choix = { [id] =
 --   "fabriquer" | "acheter" }, tenu (la raison de celui qui tient ses lignes), created } ;
---   ComposantsDB.courant = le rang du projet affiché.
+--   ComposantsDB.courant = le rang du projet affiché ; ComposantsDB.brouillon = le Brouillon (un projet hors de la liste).
 local _, ns = ...
 
 local db = function() return ns.db() end
+local surBrouillon = false -- le Brouillon est-il affiché (au lieu du projet de rang ComposantsDB.courant) ?
 
 -- « Ce projet a changé » : fn(p, quoi) après chaque modification, quoi = "nouveau", "lignes", "choix", "nom", "tenu" ou
 -- "supprime" (p : le projet qui vient de partir). Un rappel qui plante ne prive pas les autres.
@@ -32,12 +33,40 @@ function ns.nouveauProjet(p)
   d.projetSeq = (d.projetSeq or 0) + 1
   p.id = d.projetSeq
   table.insert(d.projets, p)
-  d.courant = #d.projets
+  d.courant, surBrouillon = #d.projets, false
   signaler(p, "nouveau")
   return p
 end
 
+-- Le Brouillon (CONTEXT.md) : un projet de passage, unique et toujours là, hors de la liste des projets (identité 0, jamais
+-- donnée à un projet). Tout Ctrl+clic droit y atterrit ; on n'y commande rien. Affiché par son bouton, jamais par « < » et
+-- « > » ; l'afficher ne change pas le rang du projet qu'on quitte (on y revient par « < » ou « > »).
+function ns.brouillon()
+  local d = db()
+  d.brouillon = d.brouillon or { id = 0, name = "Brouillon", lines = {} }
+  return d.brouillon
+end
+function ns.estBrouillon(p) return p ~= nil and p == db().brouillon end
+function ns.ouvrirBrouillon()
+  surBrouillon = true
+  return ns.brouillon()
+end
+function ns.viderBrouillon()
+  local b = ns.brouillon()
+  b.lines, b.choix = {}, nil
+  signaler(b, "lignes")
+end
+-- « + » : un vrai projet avec les lignes et les choix de case du Brouillon, qui se vide ; nil si le Brouillon est vide.
+function ns.brouillonEnProjet()
+  local b = ns.brouillon()
+  if #b.lines == 0 then return nil end
+  local p = ns.nouveauProjet({ lines = b.lines, choix = b.choix })
+  ns.viderBrouillon()
+  return p
+end
+
 function ns.projetCourant()
+  if surBrouillon then return ns.brouillon() end
   local d = db()
   if #d.projets == 0 then ns.nouveauProjet() end
   d.courant = math.min(math.max(1, d.courant or 1), #d.projets)
@@ -45,16 +74,20 @@ function ns.projetCourant()
 end
 
 -- « < » et « > » : le projet d'avant, d'après.
+-- Depuis le Brouillon : retour au projet qu'on avait quitté.
 function ns.changerProjet(delta)
   local d = db()
+  if surBrouillon then surBrouillon = false return ns.projetCourant() end
   d.courant = (d.courant or 1) + delta
   return ns.projetCourant()
 end
 
 -- Position du projet affiché, nombre de projets.
 function ns.numeroProjet()
-  ns.projetCourant()
-  return db().courant, #db().projets
+  local d = db()
+  if #d.projets == 0 then ns.nouveauProjet() end
+  d.courant = math.min(math.max(1, d.courant or 1), #d.projets)
+  return d.courant, #d.projets
 end
 
 -- Supprime le projet affiché et le renvoie.
@@ -74,7 +107,7 @@ end
 -- Le projet d'identité id, affiché ; nil s'il n'existe plus.
 function ns.ouvrirProjet(id)
   local p, i = ns.projet(id)
-  if p then db().courant = i end
+  if p then db().courant, surBrouillon = i, false end
   return p
 end
 

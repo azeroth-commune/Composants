@@ -26,8 +26,11 @@ local COLORS = {
 local frame, content, scroll
 -- Handshake chargé ? (le jeu le charge avant Composants quand il est là : OptionalDeps)
 local function H() return Handshake end
+-- Handshake, si ce projet peut avoir des commandes : jamais le Brouillon (on n'y commande rien), qui n'est donc jamais
+-- passé à Handshake.
+local function HPour(p) return not ns.estBrouillon(p) and H() or nil end
 -- Les apports des commandes Handshake de ce projet (nil sans Handshake) : ces cases sortent de l'arbre.
-function ns.apportsHandshake(p) return H() and H().Apports(p) or nil end
+function ns.apportsHandshake(p) return HPour(p) and H().Apports(p) or nil end
 -- Vue du dessin : zoom (× l'échelle qui fait tout tenir en largeur) et décalage, en unités du dessin.
 local view = { zoom = 1, x = 0, y = 0, fit = 1 }
 local function applyView()
@@ -56,7 +59,7 @@ local function newOrderTag()
     GameTooltip:AddLine(("Livraison : %s pour %s"):format(o.maker, bandName(o.client)))
     GameTooltip:AddLine(o.player and ("Par " .. o.player) or "Personne de ta liste n'a ce métier", 0.8, 0.8, 0.8)
     for _, id in ipairs(o.lines) do GameTooltip:AddLine(("%d× %s"):format(o.qty[id], ns.itemLabel(id)), 1, 1, 1) end
-    if H() then GameTooltip:AddLine("Pour la commander : « Commander » sur le titre du bloc", 0.66, 0.56, 1) end
+    if HPour(projet()) then GameTooltip:AddLine("Pour la commander : « Commander » sur le titre du bloc", 0.66, 0.56, 1) end
     GameTooltip:Show()
   end)
   t:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -67,7 +70,7 @@ local cards, lines, labels = {}, {}, {}
 local function opts() return ns.db().options end
 local function projet() return ns.projetCourant() end
 -- Affichage seulement (« il le fournit », « mon prix ») : ce qui se modifie, la fenêtre le demande au projet (ns.projetPeut).
-local function replying() return H() and H().EstReponse(projet()) end -- « je réponds » : la Réponse de Handshake
+local function replying() return HPour(projet()) and H().EstReponse(projet()) end -- « je réponds » : la Réponse de Handshake
 local function lignes() return (ns.projetPeut(projet(), "lignes")) end -- ajouter, retirer, changer une quantité
 -- Avec Handshake, la commande choisie dans le projet affiché (1 = tout le projet) : Joueur, Offre, « Préparer la demande »
 -- et « En clair » portent sur elle. Un autre projet affiché : retour à 1.
@@ -330,7 +333,7 @@ local function newCard()
     elseif t == "fabriquer" then
       GameTooltip:AddLine(n.need == 0 and "Clic : le fabriquer au lieu de prendre ton stock" or "Clic : le décomposer (fabriquer) même si c'est plus cher", 0.6, 0.6, 0.6)
     end
-    if H() then -- l'apport : un terme des commandes Handshake du projet
+    if HPour(projet()) then -- l'apport : un terme des commandes Handshake du projet
       local who = replying() and "Il le fournit" or "Tu le fournis"
       if n.apport > 0 then GameTooltip:AddLine(("%s : %d (Ctrl+clic pour le reprendre)"):format(who, n.apport), 0.3, 0.8, 0.85)
       elseif n.kind ~= "target" then GameTooltip:AddLine("Ctrl+clic : " .. who:lower(), 0.6, 0.6, 0.6) end
@@ -346,7 +349,7 @@ local function newCard()
     elseif IsShiftKeyDown() then
       return openRecipe(n)
     elseif IsControlKeyDown() and n.kind ~= "target" then -- « j'apporte » : un apport des commandes Handshake
-      if not H() then return end
+      if not HPour(projet()) then return end
       H().Apporter(projet(), n.id, n.apport == 0)
     else
       local t = toggleOf(n)
@@ -456,14 +459,15 @@ local function refresh()
 
   for _, h in ipairs(headers) do h:Hide() end
   if #roots == 0 then
-    header(1, 0, "|cff999999Tape un nom (suggestions) ou dépose un objet, puis Ajouter ; ou Ctrl+clic droit sur un objet n'importe où.|r")
+    header(1, 0, ns.estBrouillon(projet()) and "|cff999999Brouillon vide : Ctrl+clic droit sur un objet n'importe où l'y met ; « + » en fait un projet.|r"
+      or "|cff999999Tape un nom (suggestions) ou dépose un objet, puis Ajouter ; Ctrl+clic droit sur un objet le met au Brouillon.|r")
   else
     local o, cost = projet(), ns.moneyShort(total) .. (incomplete and " |cffe64d4d+ ?|r" or "")
     if replying() then -- ma part, mon prix, ce qui reste pour mon travail
       local price = H().Commande(o).tip or 0
       header(1, 0, ("Ma part · %s · mon prix %s · travail %s"):format(cost, ns.moneyShort(price), ns.moneySigned(price - total)))
     else
-      header(1, 0, "Projet · " .. cost)
+      header(1, 0, (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost)
     end
     for c = 1, g.cols - 1 do header(c + 1, spacing * c, "Étage " .. c) end
   end
@@ -568,7 +572,7 @@ local function refresh()
     b.name:SetTextColor(k[1], k[2], k[3])
     b.name:SetText(grp.label)
     b.grp = grp
-    b.cmd:SetShown(H() ~= nil)
+    b.cmd:SetShown(HPour(projet()) ~= nil)
     b:Show()
   end
   for i = usedBoxes + 1, #boxes do boxes[i]:Hide() end
@@ -634,7 +638,7 @@ local function refresh()
       local k = b.color
       t:SetBackdropBorderColor(k[1], k[2], k[3], 0.9)
       t:ClearAllPoints()
-      t:SetPoint("LEFT", shelf[b] or (H() and b.cmd or b.name), "RIGHT", 6, 0)
+      t:SetPoint("LEFT", shelf[b] or (b.cmd:IsShown() and b.cmd or b.name), "RIGHT", 6, 0)
       shelf[b] = t
       t:Show()
     end
@@ -694,6 +698,7 @@ function ns.barreCommandes(frame, button, input, label, delB, needsB)
   cmdL:SetPoint("TOPLEFT", 14, -164)
   cmdL:SetText("Commandes :")
   local cmdB, actB = {}, {}
+  local fixes = { playerL, player, tipL, tip, poL, hint, sendB, importB, contractB, cmdL } -- cachés sur le Brouillon
   -- À côté d'une commande : « Nouvelle version » (envoyée, sa part du projet a changé ; le contrat préparé s'ouvre
   -- dans Contrats, il part de là) ou « Commander de nouveau » (refusée, retirée, échue).
   local function agir(self)
@@ -702,6 +707,12 @@ function ns.barreCommandes(frame, button, input, label, delB, needsB)
     frame.syncOrder()
   end
   frame.syncOrder = function()
+    local hors = ns.estBrouillon(projet()) -- on n'y commande rien : ni barre, ni commandes, rien demandé à Handshake
+    for _, w in ipairs(fixes) do w:SetShown(not hors) end
+    if hors then
+      for i = 1, #cmdB do cmdB[i]:Hide(); actB[i]:Hide() end
+      return
+    end
     local o, sel = projet(), laCommande()
     local vues = hs.Commandes(o)
     local c = vues[sel]
@@ -771,7 +782,8 @@ local function build()
     return t
   end
 
-  -- Le projet affiché (Projet.lua) : < et >, nom, Nouveau, Supprimer.
+  -- Le projet affiché (Projet.lua) : < et >, nom, Nouveau, Supprimer. Le Brouillon (son bouton) : « + » en fait un vrai
+  -- projet, « Vider » le vide ; on ne le renomme pas.
   local function switch(d)
     ns.changerProjet(d)
     refresh()
@@ -784,9 +796,15 @@ local function build()
   nextB:SetPoint("LEFT", orderName, "RIGHT", 4, 0)
   local count = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   count:SetPoint("LEFT", nextB, "RIGHT", 6, 0)
-  local newB = button("Nouveau", 80, function() ns.nouveauProjet(); refresh() end)
+  local function surBrouillon() return ns.estBrouillon(projet()) end
+  local newB = button("Nouveau", 80, function()
+    if not surBrouillon() then ns.nouveauProjet()
+    elseif not ns.brouillonEnProjet() then return print("Composants : le Brouillon est vide.") end
+    refresh()
+  end)
   newB:SetPoint("LEFT", nextB, "RIGHT", 44, 0)
   local delB = button("Supprimer", 84, function()
+    if surBrouillon() then ns.viderBrouillon() return refresh() end
     if not IsShiftKeyDown() then return print("Composants : Maj+clic sur « Supprimer » pour effacer ce projet.") end
     ns.supprimerProjet() -- signalé : Handshake efface ses commandes pas encore parties, jamais un contrat
     refresh()
@@ -794,8 +812,12 @@ local function build()
   delB:SetPoint("LEFT", newB, "RIGHT", 4, 0)
   -- L'en-tête du projet, sans Handshake ; avec lui, la barre des commandes le complète (frame.syncOrder).
   frame.syncProjet = function()
+    local b = surBrouillon()
     if not orderName:HasFocus() then orderName:SetText(projet().name or "") end
-    count:SetText(("%d/%d"):format(ns.numeroProjet()))
+    orderName:SetEnabled(not b)
+    count:SetText(b and "" or ("%d/%d"):format(ns.numeroProjet()))
+    newB:SetText(b and "+" or "Nouveau")
+    delB:SetText(b and "Vider" or "Supprimer")
   end
 
   -- Ligne d'ajout : déposer un objet sur la case, ou taper son nom.
@@ -820,6 +842,8 @@ local function build()
   add:SetScript("OnClick", submit)
   local needsB = button("Besoins", 90, function() ns.toggleNeeds() end)
   needsB:SetPoint("TOPRIGHT", -14, -75)
+  local brouillonB = button("Brouillon", 90, function() ns.ouvrirBrouillon(); refresh() end)
+  brouillonB:SetPoint("TOPRIGHT", -14, -106)
   local function dropped()
     local kind, id = GetCursorInfo()
     if kind == "item" then
@@ -932,7 +956,7 @@ AzerothCommune.Regrouper({ nom = "Composants", dossier = "Composants", icone = "
   ouvrir = function() ns.openCraftWindow() end, store = function() return ns.db() end })
 
 -- Ctrl+clic droit sur un objet n'importe où dans le jeu (sacs, banque, lien du chat, butin, fenêtre de métier, HV) : il
--- entre dans le projet affiché et la fenêtre s'ouvre (le Brouillon viendra, Composants#3). Un objet-recette (« Plans :
+-- entre dans le Brouillon, jamais dans le projet affiché, et la fenêtre s'ouvre sur le Brouillon. Un objet-recette (« Plans :
 -- Claymore ») donne l'objet fabriqué. Les autres touches sont prises : Ctrl+clic = cabine d'essayage, Alt+clic =
 -- Mastercraft, AuctionDB, Auctionator ; chez un marchand, Ctrl+clic droit est à BetterVendorPrice.
 function ns.ctrlClicDroit(link)
@@ -945,10 +969,10 @@ function ns.ctrlClicDroit(link)
     if not made then return print("Composants : je ne trouve pas l'objet que fabrique " .. link .. ".") end
     id = made
   end
-  if not lignes() then ns.nouveauProjet() end -- un projet tenu ne change pas : un projet à toi
+  local b = ns.ouvrirBrouillon()
   local deja = false
-  for _, l in ipairs(ns.projetCourant().lines) do deja = deja or l.id == id end -- déjà dedans : sa quantité ne bouge pas
-  if not deja then ns.projetAjouter(ns.projetCourant(), id, 1) end
+  for _, l in ipairs(b.lines) do deja = deja or l.id == id end -- déjà dedans : sa quantité ne bouge pas
+  if not deja then ns.projetAjouter(b, id, 1) end
   ns.openCraftWindow()
 end
 if HandleModifiedItemClick then

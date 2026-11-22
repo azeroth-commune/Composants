@@ -93,18 +93,54 @@ test("« + » et « – » : le choix de case appartient au projet affiché", fu
     assertNil(p.choix and p.choix[id])
 end) end)
 
--- Ctrl+clic droit sur un objet n'importe où dans le jeu : il entre dans le projet affiché.
-test("Ctrl+clic droit sur un objet : il entre dans le projet affiché", function() sansRecettes(function()
-    SlashCmdList.COMPOSANTS("demo ceinture")
-    local p = projet()
-    local n = #p.lines
+-- Ctrl+clic droit sur un objet n'importe où dans le jeu : il entre dans le Brouillon, jamais dans le projet affiché.
+local function ctrlClicDroit(lien)
     local ctrl, alt, maj, souris = IsControlKeyDown, IsAltKeyDown, IsShiftKeyDown, GetMouseButtonClicked
     IsControlKeyDown, IsAltKeyDown, IsShiftKeyDown = function() return true end, function() return false end, function() return false end
     GetMouseButtonClicked = function() return "RightButton" end
-    local ok, err = pcall(HandleModifiedItemClick, "|cffffffff|Hitem:2841::::::::1:::::::::|h[Barre de bronze]|h|r")
+    local ok, err = pcall(HandleModifiedItemClick, lien)
     IsControlKeyDown, IsAltKeyDown, IsShiftKeyDown, GetMouseButtonClicked = ctrl, alt, maj, souris
-    assertEquals(n + 1, #p.lines, "ajouté au projet affiché" .. (ok and "" or (" (" .. tostring(err) .. ")")))
-    assertEquals(2841, p.lines[#p.lines].id)
+    if not ok then error(err, 0) end
+end
+local BRONZE = "|cffffffff|Hitem:2841::::::::1:::::::::|h[Barre de bronze]|h|r"
+
+test("Ctrl+clic droit sur un objet : il entre dans le Brouillon, pas dans le projet affiché", function() sansRecettes(function()
+    SlashCmdList.COMPOSANTS("demo ceinture")
+    local p = projet()
+    local n = #p.lines
+    ctrlClicDroit(BRONZE)
+    local b = ComposantsDB.brouillon
+    assertNotNil(b, "le Brouillon")
+    assertEquals(n, #p.lines, "le projet affiché ne change pas")
+    local q
+    for i, l in ipairs(b.lines) do if l.id == 2841 then q = l end end
+    assertNotNil(q, "la barre de bronze au Brouillon")
+    q.qty = 5
+    ctrlClicDroit(BRONZE)
+    assertEquals(5, q.qty, "déjà là : sa quantité ne bouge pas")
+    assertTrue(affiche("Brouillon"), "la fenêtre s'ouvre sur le Brouillon")
+    assertNotNil(bouton("Vider"))
+end) end)
+
+test("le Brouillon : son bouton, hors de « < » et « > », « + » en fait un projet", function() sansRecettes(function()
+    SlashCmdList.COMPOSANTS("demo ceinture")
+    local nb = #ComposantsDB.projets
+    bouton("Brouillon"):Click()
+    bouton("Vider"):Click()
+    assertEquals(0, #ComposantsDB.brouillon.lines, "vidé")
+    ctrlClicDroit(BRONZE)
+    assertTrue(affiche("Brouillon"))
+    for _ = 1, nb + 1 do
+        bouton(">"):Click()
+        assertTrue(not affiche("Brouillon"), "« > » passe par le Brouillon")
+    end
+    bouton("Brouillon"):Click()
+    assertTrue(affiche("Brouillon"))
+    bouton("+"):Click()
+    assertEquals(nb + 1, #ComposantsDB.projets, "un vrai projet")
+    assertEquals(2841, projet().lines[1].id, "avec les lignes du Brouillon")
+    assertEquals(0, #ComposantsDB.brouillon.lines, "le Brouillon vidé")
+    assertTrue(not affiche("Brouillon"), "le nouveau projet affiché")
 end) end)
 
 test("Besoins d'un projet : la petite fenêtre, ce qu'il reste à réunir", function() sansRecettes(function()
@@ -168,6 +204,22 @@ else
         local texte = commandes()[2]:GetText()
         assertTrue(texte:find("demande envoyée", 1, true) ~= nil, texte)
         assertEquals("demande envoyée", Handshake.Commande(p, 2).etat)
+    end) end)
+
+    test("avec Handshake : rien à commander sur le Brouillon", function() sansRecettes(function()
+        SlashCmdList.COMPOSANTS("demo ceinture")
+        assertTrue(#boutons(function(t) return t == "Commander" end) > 0, "témoin : « Commander » sur un projet")
+        bouton("Brouillon"):Click()
+        bouton("Vider"):Click()
+        ctrlClicDroit("|cffffffff|Hitem:10721::::::::1:::::::::|h[Ceinture]|h|r") -- un objet aux blocs nombreux
+        assertTrue(affiche("Brouillon"))
+        assertTrue(#tous(ComposantsFrame, function(c) return c.grp ~= nil and c:IsShown() end) > 0, "des blocs dessinés")
+        for _, t in ipairs({ "Commander", "Préparer la demande", "Importer", "En clair" }) do
+            assertNil(bouton(t), t .. " sur le Brouillon")
+        end
+        assertEquals(0, #commandes(), "pas de liste de commandes")
+        assertNil(HandshakeDB.commandes and HandshakeDB.commandes[ComposantsDB.brouillon.id], "rien de rangé chez Handshake")
+        bouton("Vider"):Click()
     end) end)
 
     test("avec Handshake : Ctrl+clic sur une case, « j'apporte » marque l'apport de la commande", function() sansRecettes(function()
