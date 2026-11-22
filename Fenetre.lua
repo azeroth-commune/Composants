@@ -140,8 +140,8 @@ end
 
 -- Le dessin de l'arbre d'un projet (res = ns.projetArbre, Projet.lua), sans rien afficher (testé hors jeu dans check.lua).
 -- Étages : les lignes du projet en 0 (et les composants d'un enchantement, qui n'a pas de case), un objet juste à droite
--- de son parent le plus à droite. Bandes : un bloc = ses
--- cases + ce qui n'est pas fabriqué sous elles (rattaché à son premier parent), puis le reste (acheté ou en stock).
+-- de son parent le plus à droite. Bandes : un bloc = ses cases + ce qui n'est pas fabriqué sous elles (rattaché à son
+-- premier parent), puis le reste (acheté ou en stock).
 -- Chaque bloc reçoit sa couleur (index), son titre (label) et ses cases dessinées (cards).
 function ns.dessinArbre(res)
   local list, edges = res.cases, res.liens
