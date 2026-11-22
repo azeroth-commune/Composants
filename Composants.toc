@@ -1,0 +1,17 @@
+## Interface: 16001
+## Title: Composants
+## Category: Professions
+## Category-frFR: Métiers
+## Notes: Chaque objet décomposé en ses composants, jusqu'aux matières premières : l'arbre, vos projets, ce qu'il reste à réunir.
+## Version: 0.1.0-beta
+## IconTexture: Interface\Icons\Trade_Engineering
+## Dependencies: AzerothCommune
+## OptionalDeps: Handshake
+## SavedVariables: ComposantsDB
+Donnees.lua
+Calcul.lua
+Projet.lua
+Recherche.lua
+Fenetre.lua
+Besoins.lua
+API.lua
