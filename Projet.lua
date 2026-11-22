@@ -366,22 +366,32 @@ local function blocs(res, crafters)
   res.blocs, res.blocDe, res.livraisons = groups, byKey, orders
 end
 
--- L'arbre d'un projet : ses lignes l'une après l'autre sur le même stock, avec SES choix de case, puis les cases et les
--- blocs. p : un projet, ou toute table { lines, choix } (Handshake y passe la part d'une commande). opts : options de stock
--- et de recettes (celles de la fenêtre par défaut). apports (facultatif) = { [id] = true }, les cases qu'une commande
--- Handshake apporte : elles sortent de l'arbre, le projet ne les garde pas.
--- Renvoie { roots, cases, caseDe, liens, blocs, blocDe, livraisons, total, incomplete, market }.
-function ns.projetArbre(p, opts, apports)
+-- L'arbre de plusieurs projets enchaînés (les Besoins) : leurs lignes l'une après l'autre sur UN stock, chaque projet
+-- avec SES choix de case et ses apports (apportsDe[p], facultatif), puis les cases et les blocs. res.roots[i] : la ligne i,
+-- dans l'ordre des projets ; res.projets : les projets.
+function ns.arbreDe(projets, opts, apportsDe)
   local roots, market, stock, vendors, total, incomplete = {}, nil, nil, nil, 0, false
-  for i, l in ipairs(p.lines) do -- les prix marchands lus une fois pour tout le projet
-    roots[i], market, stock, vendors = ns.craftPlan(l.id, l.qty, opts or db().options, stock, apports, p.choix, vendors)
-    total = total + (roots[i].cost or 0)
-    incomplete = incomplete or roots[i].incomplete or not roots[i].cost
+  for _, p in ipairs(projets) do
+    for _, l in ipairs(p.lines) do -- les prix marchands lus une fois pour tout le calcul
+      local i = #roots + 1
+      roots[i], market, stock, vendors = ns.craftPlan(l.id, l.qty, opts or db().options, stock, apportsDe and apportsDe[p], p.choix, vendors)
+      total = total + (roots[i].cost or 0)
+      incomplete = incomplete or roots[i].incomplete or not roots[i].cost
+    end
   end
-  local res = cases(roots, p.choix or {})
-  res.roots, res.total, res.incomplete, res.market = roots, total, incomplete, market
+  local res = cases(roots, #projets == 1 and projets[1].choix or {}) -- n.choix : le choix de case d'un projet seul
+  res.roots, res.total, res.incomplete, res.market, res.projets = roots, total, incomplete, market, projets
   blocs(res, ns.crafters())
   return res
+end
+
+-- L'arbre d'un projet, comme s'il était seul (tout le stock pour lui). p : un projet, ou toute table { lines, choix }
+-- (Handshake y passe la part d'une commande). opts : options de stock et de recettes (celles de la fenêtre par défaut).
+-- apports (facultatif) = { [id] = true }, les cases qu'une commande Handshake apporte : elles sortent de l'arbre, le projet
+-- ne les garde pas.
+-- Renvoie { roots, cases, caseDe, liens, blocs, blocDe, livraisons, total, incomplete, market }.
+function ns.projetArbre(p, opts, apports)
+  return ns.arbreDe({ p }, opts, apports and { [p] = apports })
 end
 
 ---------------------------------------------------------------------------------------------------

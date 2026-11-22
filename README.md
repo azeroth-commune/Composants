@@ -13,7 +13,7 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
   projet affiché ; `/composants demo [set|ceinture|hasard]` crée un projet d'essai ; Ctrl+clic droit sur un objet
   n'importe où le met au Brouillon (bouton « Brouillon » ; « + » en fait un projet, « Vider » le vide ; on n'y commande
   rien). Bouton de minicarte et options : ceux, communs, d'Azeroth Commune.
-- **Données propres** : `ComposantsDB` (projets, Brouillon, options de calcul). Rien de relevé n'y est gardé (ADR 0002 de l'atelier).
+- **Données propres** : `ComposantsDB` (projets, Brouillon, projets mis dans les Besoins, options de calcul). Rien de relevé n'y est gardé (ADR 0002 de l'atelier).
 
 ## Fichiers
 
@@ -24,7 +24,7 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 | `Projet.lua` | les projets (identité stable, lignes, choix de case, projet tenu, signal de changement), le Brouillon, les cases, les blocs, l'arbre |
 | `Recherche.lua` | la barre de recherche d'objets (sur `AzerothCommune.ChercherObjets`) |
 | `Fenetre.lua` | la fenêtre des projets, son dessin ; la barre des commandes de Handshake quand il est là ; Ctrl+clic droit ; `/composants` |
-| `Besoins.lua` | la fenêtre des Besoins du projet affiché |
+| `Besoins.lua` | les Besoins : les projets qu'on y met (case « dans les Besoins »), puis le Brouillon, sur un seul stock ; leur fenêtre |
 | `API.lua` | le global `Composants` |
 
 ## API publique

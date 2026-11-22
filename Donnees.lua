@@ -83,7 +83,8 @@ function ns.findItem(text) return lib.TrouverObjet(text, ns.items(), ns.recipes(
 -- Suggestions de la barre de recherche : la recherche d'objets du socle (Composants souscrit aux deux types qu'elle lit).
 ns.chercherObjets = lib.ChercherObjets
 
--- ComposantsDB : { projets, projetSeq, courant (Projet.lua), options (de calcul), minimap_angle (le socle) }.
+-- ComposantsDB : { projets, projetSeq, courant, brouillon (Projet.lua), besoins (Besoins.lua), options (de calcul),
+--   minimap_angle (le socle) }.
 local OPTIONS = { bags = true, bank = true, alts = false, unlearned = false }
 function ns.db()
   ComposantsDB = ComposantsDB or {}

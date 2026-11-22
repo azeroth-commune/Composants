@@ -107,6 +107,56 @@ arbre = ns.projetArbre(fer, { bags = true, bank = true, unlearned = true }, { [2
 assert(arbre.caseDe.I2772.apport == 26 and arbre.caseDe.I2772.need == 0 and not fer.apports, "minerai apporté : la case entière")
 print("Composants : cases d'un projet, stock partagé OK")
 
+-- Les Besoins (CONTEXT.md) : les projets qu'on y a mis, dans l'ordre où on les y a mis, puis le Brouillon, sur UN stock ;
+-- la page d'un projet l'estime comme s'il était seul.
+do
+  donnees({ hv = market, recettes = {}, sacs = { [3575] = 12 } })
+  local OPT = { bags = true, bank = true }
+  local function besoin(res, id) -- la ligne des Besoins de cet objet
+    for _, r in ipairs((ns.orderNeeds(res))) do if r.id == id then return r end end
+  end
+  local pa = ns.nouveauProjet({ name = "A", lines = { { id = 3575, qty = 10 } } })
+  local pb = ns.nouveauProjet({ name = "B", lines = { { id = 3575, qty = 10 } } })
+  ns.viderBrouillon()
+  for _, p in ipairs(ns.besoinsProjets()) do ns.besoinsRetirer(p) end
+  assert(#ns.besoinsProjets() == 0, "rien dans les Besoins")
+  ns.besoinsMettre(pa); ns.besoinsMettre(pb); ns.besoinsMettre(pa)
+  local liste = ns.besoinsProjets()
+  assert(#liste == 2 and liste[1] == pa and liste[2] == pb and ns.dansBesoins(pa), "A puis B, une fois chacun")
+  local res = ns.besoinsArbre(OPT)
+  local r = besoin(res, 3575)
+  assert(r.required == 20 and r.have[1] == 12 and r.need == 8, "un seul stock : 8 barres à réunir, pas " .. r.need)
+  assert(#res.roots == 2 and res.roots[1].have[1] == 10 and res.roots[2].have[1] == 2, "le stock va d'abord à A")
+  for _, p in ipairs({ pa, pb }) do
+    local t = ns.projetArbre(p, OPT).caseDe.T1
+    assert(t.need == 0 and t.have[1] == 10, "la page de " .. p.name .. " : en stock, comme s'il était seul")
+  end
+  -- L'ordre d'ajout décide : A retiré puis remis passe après B.
+  ns.besoinsRetirer(pa)
+  assert(#ns.besoinsProjets() == 1 and not ns.dansBesoins(pa), "A retiré")
+  ns.besoinsMettre(pa)
+  res = ns.besoinsArbre(OPT)
+  assert(res.projets[1] == pb and res.roots[1].have[1] == 10 and res.roots[2].have[1] == 2, "B d'abord, maintenant")
+  -- Le Brouillon y compte, en dernier, même mis avant.
+  local b = ns.brouillon()
+  ns.projetAjouter(b, 3575, 5)
+  ns.besoinsMettre(b)
+  res = ns.besoinsArbre(OPT)
+  assert(#res.projets == 3 and res.projets[3] == b and res.roots[3].have[1] == 0 and besoin(res, 3575).need == 13, "le Brouillon, en dernier")
+  -- Chaque projet avec ses choix de case : A fond son minerai (sans prendre de barres), B et le Brouillon achètent.
+  AzerothCommuneDB.recipes = { [3307] = { name = "Fonte du fer", output = 3575, reagents = { { id = 2772, qty = 1 } } } }
+  ns.projetChoix(pa, 3575, "fabriquer"); ns.projetChoix(pb, 3575, "acheter"); ns.projetChoix(b, 3575, "acheter")
+  res = ns.besoinsArbre({ bags = true, unlearned = true })
+  assert(besoin(res, 2772).required == 10 and besoin(res, 3575).need == 3, "choix de case de chacun : A fond 10 minerais")
+  -- Un projet supprimé sort des Besoins ; une modification d'un projet s'y voit au calcul suivant.
+  ns.projetQuantite(pb, 1, 20)
+  assert(besoin(ns.besoinsArbre(OPT), 3575).required == 25, "la quantité changée de B compte (20 + 5 du Brouillon ; A fond)")
+  ns.ouvrirProjet(pb.id); ns.supprimerProjet()
+  assert(#ns.besoinsProjets() == 2 and ns.besoinsProjets()[1] == pa, "B supprimé : plus dans les Besoins")
+  ns.viderBrouillon(); ns.besoinsRetirer(pa)
+end
+print("Composants : Besoins sur plusieurs projets, un seul stock OK")
+
 -- Recettes équivalentes (#46) : vrai-argent par le minage (10098) ou par la transmutation (11480), sans prix. Le choix ne
 -- dépend pas de l'ordre de la base des recettes : personne ne les connaît → le plus petit identifiant ; un perso connaît la
 -- transmutation → elle.

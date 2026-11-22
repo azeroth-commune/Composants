@@ -446,7 +446,7 @@ local function refresh()
   local roots, market, total, incomplete, g = res.roots, res.market, res.total, res.incomplete, ns.dessinArbre(res)
   frame.syncProjet()
   if frame.syncOrder then frame.syncOrder() end
-  if ns.refreshNeeds then ns.refreshNeeds(res) end
+  if ns.refreshNeeds then ns.refreshNeeds() end -- un « + », un « – », une quantité : les Besoins suivent aussitôt
 
   -- Les étages s'étalent sur la largeur ; trop nombreux, le dessin rétrécit pour tenir (puis molette pour zoomer).
   local avail = scroll:GetWidth()
@@ -818,6 +818,8 @@ local function build()
     count:SetText(b and "" or ("%d/%d"):format(ns.numeroProjet()))
     newB:SetText(b and "+" or "Nouveau")
     delB:SetText(b and "Vider" or "Supprimer")
+    frame.besoinsCB:SetShown(not b) -- (son texte avec elle)
+    frame.besoinsCB:SetChecked(ns.dansBesoins(projet()))
   end
 
   -- Ligne d'ajout : déposer un objet sur la case, ou taper son nom.
@@ -844,6 +846,18 @@ local function build()
   needsB:SetPoint("TOPRIGHT", -14, -75)
   local brouillonB = button("Brouillon", 90, function() ns.ouvrirBrouillon(); refresh() end)
   brouillonB:SetPoint("TOPRIGHT", -14, -106)
+  -- Le projet affiché dans les Besoins (le Brouillon y est toujours, en dernier : pas de case pour lui).
+  local besoinsCB = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
+  besoinsCB:SetSize(22, 22)
+  besoinsCB.label = besoinsCB:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  besoinsCB.label:SetPoint("RIGHT", brouillonB, "LEFT", -12, 0)
+  besoinsCB.label:SetText("dans les Besoins")
+  besoinsCB:SetPoint("RIGHT", besoinsCB.label, "LEFT", 0, 0)
+  besoinsCB:SetScript("OnClick", function(self)
+    if self:GetChecked() then ns.besoinsMettre(projet()) else ns.besoinsRetirer(projet()) end
+    if ns.refreshNeeds then ns.refreshNeeds() end
+  end)
+  frame.besoinsCB = besoinsCB
   local function dropped()
     local kind, id = GetCursorInfo()
     if kind == "item" then

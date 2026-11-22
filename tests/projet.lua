@@ -143,14 +143,49 @@ test("le Brouillon : son bouton, hors de « < » et « > », « + » en fait un 
     assertTrue(not affiche("Brouillon"), "le nouveau projet affiché")
 end) end)
 
-test("Besoins d'un projet : la petite fenêtre, ce qu'il reste à réunir", function() sansRecettes(function()
+-- Les Besoins : on y met des projets par la case « dans les Besoins » ; un « + » ou un « – » s'y voit aussitôt.
+local function dansBesoins()
+    return tous(ComposantsFrame, function(c)
+        return c:GetObjectType() == "CheckButton" and c.label and c.label:GetText() == "dans les Besoins"
+    end)[1]
+end
+local function lignesBesoins()
+    local out = {}
+    for _, c in ipairs(tous(ComposantsBesoinsFrame, function(c) return c.itemID ~= nil and c:IsShown() end)) do out[c.itemID] = c end
+    return out
+end
+
+test("Besoins de deux projets : la petite fenêtre, un « – » s'y voit aussitôt", function() sansRecettes(function()
+    ComposantsDB.besoins = {}
+    SlashCmdList.COMPOSANTS("demo set")
+    local a = projet()
+    dansBesoins():Click()
     SlashCmdList.COMPOSANTS("demo ceinture")
+    local p = projet()
+    assertTrue(not dansBesoins():GetChecked(), "pas encore dans les Besoins")
+    dansBesoins():Click()
+    assertEquals(a.id, ComposantsDB.besoins[1])
+    assertEquals(p.id, ComposantsDB.besoins[2])
     bouton("Besoins"):Click()
     assertTrue(ComposantsBesoinsFrame:IsShown())
-    local lignes = tous(ComposantsBesoinsFrame, function(c) return c.itemID ~= nil and c:IsShown() end)
-    assertTrue(#lignes > 0, "des objets à réunir")
+    assertTrue(next(lignesBesoins()) ~= nil, "des objets à réunir")
     local envoyer = tous(ComposantsBesoinsFrame, function(c) return c.GetText and (c:GetText() or ""):find("Envoyer", 1, true) end)
     assertEquals(0, #envoyer, "plus de bouton « Envoyer » (décision du PRD)")
+    -- « – » sur une case toute fabriquée du projet affiché : elle entre aussitôt dans les Besoins.
+    local carte
+    for _, c in ipairs(cases()) do
+        local n = c.node
+        if n.kind ~= "target" and n.made > 0 and n.made == n.qty and not lignesBesoins()[n.id] then carte = c break end
+    end
+    assertNotNil(carte, "une case toute fabriquée, hors des Besoins")
+    local id = carte.node.id
+    carte:Click()
+    assertNotNil(lignesBesoins()[id], "achetée : dans les Besoins")
+    for _, c in ipairs(cases()) do if c.node.id == id then c:Click() end end -- « + » : retour au calcul
+    assertNil(lignesBesoins()[id], "de nouveau fabriquée : hors des Besoins")
+    dansBesoins():Click()
+    assertEquals(1, #ComposantsDB.besoins, "retiré des Besoins")
+    ComposantsDB.besoins = {}
 end) end)
 
 test("la barre de recherche propose les objets de la recherche du socle", function() sansRecettes(function()
