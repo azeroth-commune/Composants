@@ -42,6 +42,23 @@ test("Composants se charge : son global, sa commande, ses données propres", fun
     for _, k in ipairs({ "recipes", "chars", "items", "market" }) do assertNil(ComposantsDB[k]) end
 end)
 
+-- Composants lit ses données par le socle : ses souscriptions sont datées de ce chargement, et les inventaires sont rangés
+-- par GUID (repris de tests/releves.lua de Handshake, parti avec l'arbre, Handshake#39).
+test("Composants souscrit à ses types de données ; mon perso par son GUID dans les inventaires", function()
+    for _, t in ipairs({ "recettes connues", "base des recettes", "inventaires", "métiers et compétences", "marchands", "objets", "cours de l'HV" }) do
+        assertType("number", AzerothCommuneDB.souscriptions[t])
+        assertTrue(time() - AzerothCommuneDB.souscriptions[t] < 600, t)
+    end
+    local lib = AzerothCommune
+    local d = lib:Lire("inventaires", "tous")
+    if not d then SlashCmdList.AZEROTHCOMMUNE("") d = lib:Lire("inventaires", "tous") end -- /ac : relevé tout de suite
+    assertNotNil(d, "inventaires relevés (Composants y souscrit)")
+    local n = 0
+    for cle in pairs(d.persos) do n = n + 1; assertTrue(cle:find("^Player%-") ~= nil, "clé " .. cle) end
+    assertTrue(n > 0, "au moins mon perso")
+    assertNotNil(d.persos[UnitGUID("player")], "mon perso sous mon GUID")
+end)
+
 test("projet de démo : l'arbre et ses blocs, < et > passent d'un projet à l'autre", function() sansRecettes(function()
     SlashCmdList.COMPOSANTS("demo ceinture")
     assertTrue(ComposantsFrame:IsShown())

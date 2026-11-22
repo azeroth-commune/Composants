@@ -1,6 +1,6 @@
 -- Composants, la barre de recherche d'objets de la fenêtre des projets (sur la recherche du socle, AzerothCommune.ChercherObjets).
--- ponytail: copie de celle de la commande à la main de Handshake (les deux add-ons ne se requièrent pas) ; à monter dans le
--- socle si un troisième add-on en veut une.
+-- ponytail: copie de celle de la commande à la main de Handshake (les deux add-ons ne se requièrent pas) ; deux add-ons
+-- s'en servent, elle peut monter dans le socle à côté d'AzerothCommune.ChercherObjets (une issue à ouvrir là-bas).
 local _, ns = ...
 
 -- Un objet pris dans les sacs (au curseur) et déposé sur f : il est rendu à son sac et onObjet(id) le reçoit.

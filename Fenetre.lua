@@ -647,8 +647,6 @@ local function refresh()
     .. " · « + » décompose, « – » achète tout fait (violet = ton choix) · molette : zoom, glisser : déplacer, clic milieu : ajuster")
 end
 ns.refreshCraftWindow = refresh
--- L'état des commandes (un contrat a bougé, Handshake le dit) : la liste des commandes seulement, pas l'arbre.
-function ns.syncCommandes() if frame and frame:IsShown() and frame.syncOrder then frame.syncOrder() end end
 
 ---------------------------------------------------------------------------------------------------
 local function track(id, qty)
@@ -696,8 +694,8 @@ function ns.barreCommandes(frame, button, input, label, delB, needsB)
   cmdL:SetPoint("TOPLEFT", 14, -164)
   cmdL:SetText("Commandes :")
   local cmdB, actB = {}, {}
-  -- À côté d'une commande : « Nouvelle version » (envoyée, sa part du projet a changé ; préparée en brouillon et ouverte
-  -- dans Contrats, elle part de là) ou « Commander de nouveau » (refusée, retirée, échue).
+  -- À côté d'une commande : « Nouvelle version » (envoyée, sa part du projet a changé ; le contrat préparé s'ouvre
+  -- dans Contrats, il part de là) ou « Commander de nouveau » (refusée, retirée, échue).
   local function agir(self)
     local i = hs.Agir(projet(), self.i)
     if i then choisie.p, choisie.i = projet(), i end
