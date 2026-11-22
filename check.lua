@@ -519,7 +519,7 @@ end
 print("Composants : API publique OK")
 
 -- Le Brouillon (CONTEXT.md) : Ctrl+clic droit sur un objet (lien) l'y met, une fois, jamais dans le projet affiché ; il
--- n'est pas dans la liste des projets ni dans « < » et « > » ; « + » en fait un vrai projet (lignes et choix de case) et
+-- n'est pas dans la liste des projets ; le menu « Projets » en fait un vrai projet (lignes et choix de case) et
 -- il se vide.
 do
   C_Item.GetItemInfoInstant = function() return nil, nil, nil, nil, nil, 4 end -- une arme, pas une recette
@@ -537,13 +537,10 @@ do
   ns.ctrlClicDroit(link(2841, "Barre de bronze"))
   assert(#b.lines == 2 and #p.lines == 0, "deux objets au Brouillon")
   ns.openCraftWindow = ouvrir
-  -- Hors de la liste des projets ; on l'affiche par son bouton, « < » et « > » n'y passent jamais.
+  -- Hors de la liste des projets ; on l'affiche par le menu « Projets ».
   for _, q in ipairs(Composants.Projets()) do assert(q ~= b, "le Brouillon dans la liste des projets") end
-  assert(ns.ouvrirBrouillon() == b and ns.projetCourant() == b, "le Brouillon s'affiche par son bouton")
+  assert(ns.ouvrirBrouillon() == b and ns.projetCourant() == b, "le Brouillon s'affiche")
   local n = #Composants.Projets()
-  for _ = 1, n + 1 do assert(ns.changerProjet(1) ~= b, "« > » passe par le Brouillon") end
-  ns.ouvrirBrouillon()
-  for _ = 1, n + 1 do assert(ns.changerProjet(-1) ~= b, "« < » passe par le Brouillon") end
   -- On y retire une ligne, on le vide.
   assert(ns.projetRetirer(b, 2) and #b.lines == 1, "une ligne retirée")
   ns.viderBrouillon()

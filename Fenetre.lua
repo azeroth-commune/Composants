@@ -669,9 +669,9 @@ local function searchBox(qty) return ns.rechercheObjets(frame, qty, track) end
 -- l'artisan et l'offre de la commande choisie, la liste des commandes du projet avec leur état (lu dans leur contrat par
 -- Handshake), « Préparer la demande » (ou « Contre-proposer » dans une Réponse, « Voir la demande » une fois partie),
 -- « Importer » une liste reçue, « En clair ». Tout passe par l'API publique de Handshake.
-function ns.barreCommandes(frame, button, input, label, delB, needsB)
+function ns.barreCommandes(frame, button, input, label, orderName, needsB)
   local hs = H()
-  local playerL = label("Joueur", delB, 16)
+  local playerL = label("Joueur", orderName, 16)
   local player = input(120, function(v) hs.Artisan(projet(), v, laCommande()); frame.syncOrder() end)
   player:SetPoint("LEFT", playerL, "RIGHT", 10, 0)
   local tipL = label("Offre", player, 14)
@@ -685,22 +685,27 @@ function ns.barreCommandes(frame, button, input, label, delB, needsB)
   local poL = label("po", tip, 4)
   local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   hint:SetPoint("LEFT", poL, "RIGHT", 12, 0)
-  local sendB = button("En clair", 90, function() hs.EnClair(projet(), laCommande()) end)
-  sendB:SetPoint("RIGHT", needsB, "LEFT", -6, 0)
-  local importB = button("Importer", 90, function() hs.Importer() end)
-  importB:SetPoint("RIGHT", sendB, "LEFT", -6, 0)
+  -- Ce qui sert rarement (importer une liste reçue, l'envoyer en clair) : dans le menu « Plus », pas en boutons.
+  local plusB = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
+  plusB:SetWidth(80)
+  plusB:OverrideText("Plus")
+  plusB:SetupMenu(function(_, root)
+    root:CreateButton("Importer une liste reçue", function() hs.Importer() end)
+    root:CreateButton("Envoyer la commande en clair", function() hs.EnClair(projet(), laCommande()) end)
+  end)
+  plusB:SetPoint("RIGHT", needsB, "LEFT", -6, 0)
   local contractB = button("Préparer la demande", 150, function()
     hs.Preparer(projet(), laCommande())
     frame.syncOrder()
   end)
-  contractB:SetPoint("RIGHT", importB, "LEFT", -6, 0)
+  contractB:SetPoint("RIGHT", plusB, "LEFT", -6, 0)
   -- Les commandes du projet, une par bouton : sa part, son artisan et son offre, ou « vide » (son bloc a disparu), puis
   -- son état (lu dans son contrat), l'écart de sa caution à mon estimation (P8, rouge au-delà du seuil) ; clic = la choisir.
   local cmdL = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   cmdL:SetPoint("TOPLEFT", 14, -164)
   cmdL:SetText("Commandes :")
   local cmdB, actB = {}, {}
-  local fixes = { playerL, player, tipL, tip, poL, hint, sendB, importB, contractB, cmdL } -- cachés sur le Brouillon
+  local fixes = { playerL, player, tipL, tip, poL, hint, plusB, contractB, cmdL } -- cachés sur le Brouillon
   -- À côté d'une commande : « Nouvelle version » (envoyée, sa part du projet a changé ; le contrat préparé s'ouvre
   -- dans Contrats, il part de là) ou « Commander de nouveau » (refusée, retirée, échue).
   local function agir(self)
@@ -784,42 +789,43 @@ local function build()
     return t
   end
 
-  -- Le projet affiché (Projet.lua) : < et >, nom, Nouveau, Supprimer. Le Brouillon (son bouton) : « + » en fait un vrai
-  -- projet, « Vider » le vide ; on ne le renomme pas.
-  local function switch(d)
-    ns.changerProjet(d)
-    refresh()
-  end
-  local prevB = button("<", 24, function() switch(-1) end)
-  prevB:SetPoint("TOPLEFT", 14, -40)
-  local orderName = input(190, function(v) ns.projetRenommer(projet(), v) end)
-  orderName:SetPoint("LEFT", prevB, "RIGHT", 10, 0)
-  local nextB = button(">", 24, function() switch(1) end)
-  nextB:SetPoint("LEFT", orderName, "RIGHT", 4, 0)
-  local count = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  count:SetPoint("LEFT", nextB, "RIGHT", 6, 0)
+  -- Le projet affiché (Projet.lua) : le menu « Projets » (tous les projets, le Brouillon, Nouveau, Supprimer ; skill
+  -- ui-addon : pas de < > qui font défiler), puis son nom, qu'on renomme sur place. Le Brouillon ne se renomme pas ; son
+  -- menu propose d'en faire un vrai projet, ou de le vider.
   local function surBrouillon() return ns.estBrouillon(projet()) end
-  local newB = button("Nouveau", 80, function()
-    if not surBrouillon() then ns.nouveauProjet()
-    elseif not ns.brouillonEnProjet() then return print("Composants : le Brouillon est vide.") end
-    refresh()
+  local projetsB = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
+  projetsB:SetWidth(110)
+  projetsB:SetPoint("TOPLEFT", 14, -40)
+  projetsB:OverrideText("Projets")
+  projetsB:SetupMenu(function(_, root)
+    local function ouvrir(id) ns.ouvrirProjet(id); refresh() end
+    for _, p in ipairs(ns.db().projets) do
+      root:CreateRadio(p.name or "?", function(id) return projet().id == id end, ouvrir, p.id)
+    end
+    root:CreateRadio("Brouillon", surBrouillon, function() ns.ouvrirBrouillon(); refresh() end)
+    root:CreateDivider()
+    if surBrouillon() then
+      root:CreateButton("Faire un projet du Brouillon", function()
+        if not ns.brouillonEnProjet() then return print("Composants : le Brouillon est vide.") end
+        refresh()
+      end)
+      root:CreateButton("Vider le Brouillon", function() ns.viderBrouillon(); refresh() end)
+    else
+      root:CreateButton("Nouveau projet", function() ns.nouveauProjet(); refresh() end)
+      root:CreateButton("Supprimer ce projet (Maj+clic)", function()
+        if not IsShiftKeyDown() then return print("Composants : Maj+clic sur « Supprimer ce projet » pour l'effacer.") end
+        ns.supprimerProjet() -- signalé : Handshake efface ses commandes pas encore parties, jamais un contrat
+        refresh()
+      end)
+    end
   end)
-  newB:SetPoint("LEFT", nextB, "RIGHT", 44, 0)
-  local delB = button("Supprimer", 84, function()
-    if surBrouillon() then ns.viderBrouillon() return refresh() end
-    if not IsShiftKeyDown() then return print("Composants : Maj+clic sur « Supprimer » pour effacer ce projet.") end
-    ns.supprimerProjet() -- signalé : Handshake efface ses commandes pas encore parties, jamais un contrat
-    refresh()
-  end)
-  delB:SetPoint("LEFT", newB, "RIGHT", 4, 0)
+  local orderName = input(220, function(v) ns.projetRenommer(projet(), v) end)
+  orderName:SetPoint("LEFT", projetsB, "RIGHT", 12, 0)
   -- L'en-tête du projet, sans Handshake ; avec lui, la barre des commandes le complète (frame.syncOrder).
   frame.syncProjet = function()
     local b = surBrouillon()
-    if not orderName:HasFocus() then orderName:SetText(projet().name or "") end
+    if not orderName:HasFocus() then orderName:SetText(b and "Brouillon" or projet().name or "") end
     orderName:SetEnabled(not b)
-    count:SetText(b and "" or ("%d/%d"):format(ns.numeroProjet()))
-    newB:SetText(b and "+" or "Nouveau")
-    delB:SetText(b and "Vider" or "Supprimer")
     frame.besoinsCB:SetShown(not b) -- (son texte avec elle)
     frame.besoinsCB:SetChecked(ns.dansBesoins(projet()))
   end
@@ -846,15 +852,13 @@ local function build()
   add:SetScript("OnClick", submit)
   local needsB = button("Besoins", 90, function() ns.toggleNeeds() end)
   needsB:SetPoint("TOPRIGHT", -14, -75)
-  local brouillonB = button("Brouillon", 90, function() ns.ouvrirBrouillon(); refresh() end)
-  brouillonB:SetPoint("TOPRIGHT", -14, -106)
   -- Le projet affiché dans les Besoins (le Brouillon y est toujours, en dernier : pas de case pour lui).
   local besoinsCB = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
   besoinsCB:SetSize(22, 22)
   besoinsCB.label = besoinsCB:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  besoinsCB.label:SetPoint("RIGHT", brouillonB, "LEFT", -12, 0)
   besoinsCB.label:SetText("dans les Besoins")
-  besoinsCB:SetPoint("RIGHT", besoinsCB.label, "LEFT", 0, 0)
+  besoinsCB.label:SetPoint("LEFT", besoinsCB, "RIGHT", 0, 0)
+  besoinsCB:SetPoint("TOPRIGHT", -14 - besoinsCB.label:GetStringWidth(), -106) -- sous « Besoins », le texte aligné à droite
   besoinsCB:SetScript("OnClick", function(self)
     if self:GetChecked() then ns.besoinsMettre(projet()) else ns.besoinsRetirer(projet()) end
     if ns.refreshNeeds then ns.refreshNeeds() end
@@ -870,7 +874,7 @@ local function build()
   slot:SetScript("OnReceiveDrag", dropped)
   slot:SetScript("OnClick", dropped)
 
-  if hs then ns.barreCommandes(frame, button, input, label, delB, needsB) end
+  if hs then ns.barreCommandes(frame, button, input, label, orderName, needsB) end
 
   -- Options, sous la ligne d'ajout
   local labelsOpt = { { "bags", "Déduire mes sacs" }, { "bank", "ma banque" }, { "alts", "mes autres persos" }, { "unlearned", "recettes pas apprises" } }

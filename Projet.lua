@@ -40,8 +40,8 @@ function ns.nouveauProjet(p)
 end
 
 -- Le Brouillon (CONTEXT.md) : un projet de passage, unique et toujours là, hors de la liste des projets (identité 0, jamais
--- donnée à un projet). Tout Ctrl+clic droit y atterrit ; on n'y commande rien. Affiché par son bouton, jamais par « < » et
--- « > » ; l'afficher ne change pas le rang du projet qu'on quitte (on y revient par « < » ou « > »).
+-- donnée à un projet). Tout Ctrl+clic droit y atterrit ; on n'y commande rien. Affiché par le menu « Projets » ; l'afficher ne
+-- change pas le rang du projet qu'on quitte.
 function ns.brouillon()
   local d = db()
   d.brouillon = d.brouillon or { id = 0, name = "Brouillon", lines = {} }
@@ -72,23 +72,6 @@ function ns.projetCourant()
   if #d.projets == 0 then ns.nouveauProjet() end
   d.courant = math.min(math.max(1, d.courant or 1), #d.projets)
   return d.projets[d.courant]
-end
-
--- « < » et « > » : le projet d'avant, d'après.
--- Depuis le Brouillon : retour au projet qu'on avait quitté.
-function ns.changerProjet(delta)
-  local d = db()
-  if surBrouillon then surBrouillon = false return ns.projetCourant() end
-  d.courant = (d.courant or 1) + delta
-  return ns.projetCourant()
-end
-
--- Position du projet affiché, nombre de projets.
-function ns.numeroProjet()
-  local d = db()
-  if #d.projets == 0 then ns.nouveauProjet() end
-  d.courant = math.min(math.max(1, d.courant or 1), #d.projets)
-  return d.courant, #d.projets
 end
 
 -- Supprime le projet affiché et le renvoie.

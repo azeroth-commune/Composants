@@ -13,6 +13,19 @@ local function boutons(ok)
     return tous(ComposantsFrame, function(c) return c:GetObjectType() == "Button" and c:IsVisible() and ok(c:GetText() or "") end)
 end
 local function bouton(texte) return boutons(function(t) return t == texte end)[1] end
+-- Les menus déroulants de la fenêtre (« Projets », « Plus ») ; choisir(menu, entrée) = un clic sur cette entrée.
+local function deroulant(nom)
+    return tous(ComposantsFrame, function(c) return c.OverrideText ~= nil and c:IsVisible() and c:GetText() == nom end)[1]
+end
+local function choisir(nom, entree)
+    local dd = deroulant(nom)
+    assertNotNil(dd, "le menu « " .. nom .. " »")
+    dd:GenerateMenu()
+    for _, e in dd:GetMenuDescription():EnumerateElementDescriptions() do
+        if MenuUtil.GetElementText(e) == entree then return dd:Pick(e, MenuInputContext.MouseButton, "LeftButton") end
+    end
+    error("pas d'entrée « " .. entree .. " » dans « " .. nom .. " »", 2)
+end
 -- Le nom du projet affiché en haut de la fenêtre.
 local function affiche(nom)
     return #tous(ComposantsFrame, function(c) return c:GetObjectType() == "EditBox" and c:GetText() == nom end) > 0
@@ -59,7 +72,7 @@ test("Composants souscrit à ses types de données ; mon perso par son GUID dans
     assertNotNil(d.persos[UnitGUID("player")], "mon perso sous mon GUID")
 end)
 
-test("projet de démo : l'arbre et ses blocs, < et > passent d'un projet à l'autre", function() sansRecettes(function()
+test("projet de démo : l'arbre et ses blocs, le menu « Projets » passe d'un projet à l'autre", function() sansRecettes(function()
     SlashCmdList.COMPOSANTS("demo ceinture")
     assertTrue(ComposantsFrame:IsShown())
     assertTrue(affiche("Essai : ceintures multi-métiers"))
@@ -68,9 +81,9 @@ test("projet de démo : l'arbre et ses blocs, < et > passent d'un projet à l'au
     assertTrue(#etapes > 1, "des blocs, un par métier")
     SlashCmdList.COMPOSANTS("demo set")
     assertTrue(affiche("Essai : set en thorium enchanté"))
-    bouton("<"):Click()
+    choisir("Projets", "Essai : ceintures multi-métiers")
     assertTrue(affiche("Essai : ceintures multi-métiers"))
-    bouton(">"):Click()
+    choisir("Projets", "Essai : set en thorium enchanté")
     assertTrue(affiche("Essai : set en thorium enchanté"))
 end) end)
 
@@ -119,24 +132,23 @@ test("Ctrl+clic droit sur un objet : il entre dans le Brouillon, pas dans le pro
     ctrlClicDroit(BRONZE)
     assertEquals(5, q.qty, "déjà là : sa quantité ne bouge pas")
     assertTrue(affiche("Brouillon"), "la fenêtre s'ouvre sur le Brouillon")
-    assertNotNil(bouton("Vider"))
+    choisir("Projets", "Vider le Brouillon")
+    assertEquals(0, #b.lines, "vidé par le menu")
 end) end)
 
-test("le Brouillon : son bouton, hors de « < » et « > », « + » en fait un projet", function() sansRecettes(function()
+test("le Brouillon : dans le menu « Projets », qui en fait un projet", function() sansRecettes(function()
     SlashCmdList.COMPOSANTS("demo ceinture")
     local nb = #ComposantsDB.projets
-    bouton("Brouillon"):Click()
-    bouton("Vider"):Click()
+    choisir("Projets", "Brouillon")
+    choisir("Projets", "Vider le Brouillon")
     assertEquals(0, #ComposantsDB.brouillon.lines, "vidé")
     ctrlClicDroit(BRONZE)
     assertTrue(affiche("Brouillon"))
-    for _ = 1, nb + 1 do
-        bouton(">"):Click()
-        assertTrue(not affiche("Brouillon"), "« > » passe par le Brouillon")
-    end
-    bouton("Brouillon"):Click()
+    choisir("Projets", "Essai : ceintures multi-métiers")
+    assertTrue(not affiche("Brouillon"), "un projet choisi : on quitte le Brouillon")
+    choisir("Projets", "Brouillon")
     assertTrue(affiche("Brouillon"))
-    bouton("+"):Click()
+    choisir("Projets", "Faire un projet du Brouillon")
     assertEquals(nb + 1, #ComposantsDB.projets, "un vrai projet")
     assertEquals(2841, projet().lines[1].id, "avec les lignes du Brouillon")
     assertEquals(0, #ComposantsDB.brouillon.lines, "le Brouillon vidé")
@@ -257,9 +269,10 @@ end) end)
 if not Handshake then
     test("Composants seul : aucun bouton de commande", function() sansRecettes(function()
         SlashCmdList.COMPOSANTS("demo ceinture")
-        for _, t in ipairs({ "Commander", "Préparer la demande", "Importer", "En clair" }) do
+        for _, t in ipairs({ "Commander", "Préparer la demande" }) do
             assertNil(bouton(t), t .. " affiché sans Handshake")
         end
+        assertNil(deroulant("Plus"), "le menu « Plus » (Importer, En clair) sans Handshake")
         assertEquals(0, #boutons(function(t) return t:find("tout le projet", 1, true) ~= nil end), "pas de liste de commandes")
     end) end)
 else
@@ -296,17 +309,18 @@ else
     test("avec Handshake : rien à commander sur le Brouillon", function() sansRecettes(function()
         SlashCmdList.COMPOSANTS("demo ceinture")
         assertTrue(#boutons(function(t) return t == "Commander" end) > 0, "témoin : « Commander » sur un projet")
-        bouton("Brouillon"):Click()
-        bouton("Vider"):Click()
+        choisir("Projets", "Brouillon")
+        choisir("Projets", "Vider le Brouillon")
         ctrlClicDroit("|cffffffff|Hitem:10721::::::::1:::::::::|h[Ceinture]|h|r") -- un objet aux blocs nombreux
         assertTrue(affiche("Brouillon"))
         assertTrue(#tous(ComposantsFrame, function(c) return c.grp ~= nil and c:IsShown() end) > 0, "des blocs dessinés")
-        for _, t in ipairs({ "Commander", "Préparer la demande", "Importer", "En clair" }) do
+        for _, t in ipairs({ "Commander", "Préparer la demande" }) do
             assertNil(bouton(t), t .. " sur le Brouillon")
         end
+        assertNil(deroulant("Plus"), "le menu « Plus » sur le Brouillon")
         assertEquals(0, #commandes(), "pas de liste de commandes")
         assertNil(HandshakeDB.commandes and HandshakeDB.commandes[ComposantsDB.brouillon.id], "rien de rangé chez Handshake")
-        bouton("Vider"):Click()
+        choisir("Projets", "Vider le Brouillon")
     end) end)
 
     test("avec Handshake : Ctrl+clic sur une case, « j'apporte » marque l'apport de la commande", function() sansRecettes(function()
