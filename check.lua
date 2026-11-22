@@ -107,6 +107,56 @@ arbre = ns.projetArbre(fer, { bags = true, bank = true, unlearned = true }, { [2
 assert(arbre.caseDe.I2772.apport == 26 and arbre.caseDe.I2772.need == 0 and not fer.apports, "minerai apporté : la case entière")
 print("Composants : cases d'un projet, stock partagé OK")
 
+-- Les Besoins (CONTEXT.md) : les projets qu'on y a mis, dans l'ordre où on les y a mis, puis le Brouillon, sur UN stock ;
+-- la page d'un projet l'estime comme s'il était seul.
+do
+  donnees({ hv = market, recettes = {}, sacs = { [3575] = 12 } })
+  local OPT = { bags = true, bank = true }
+  local function besoin(res, id) -- la ligne des Besoins de cet objet
+    for _, r in ipairs((ns.orderNeeds(res))) do if r.id == id then return r end end
+  end
+  local pa = ns.nouveauProjet({ name = "A", lines = { { id = 3575, qty = 10 } } })
+  local pb = ns.nouveauProjet({ name = "B", lines = { { id = 3575, qty = 10 } } })
+  ns.viderBrouillon()
+  for _, p in ipairs(ns.besoinsProjets()) do ns.besoinsRetirer(p) end
+  assert(#ns.besoinsProjets() == 0, "rien dans les Besoins")
+  ns.besoinsMettre(pa); ns.besoinsMettre(pb); ns.besoinsMettre(pa)
+  local liste = ns.besoinsProjets()
+  assert(#liste == 2 and liste[1] == pa and liste[2] == pb and ns.dansBesoins(pa), "A puis B, une fois chacun")
+  local res = ns.besoinsArbre(OPT)
+  local r = besoin(res, 3575)
+  assert(r.required == 20 and r.have[1] == 12 and r.need == 8, "un seul stock : 8 barres à réunir, pas " .. r.need)
+  assert(#res.roots == 2 and res.roots[1].have[1] == 10 and res.roots[2].have[1] == 2, "le stock va d'abord à A")
+  for _, p in ipairs({ pa, pb }) do
+    local t = ns.projetArbre(p, OPT).caseDe.T1
+    assert(t.need == 0 and t.have[1] == 10, "la page de " .. p.name .. " : en stock, comme s'il était seul")
+  end
+  -- L'ordre d'ajout décide : A retiré puis remis passe après B.
+  ns.besoinsRetirer(pa)
+  assert(#ns.besoinsProjets() == 1 and not ns.dansBesoins(pa), "A retiré")
+  ns.besoinsMettre(pa)
+  res = ns.besoinsArbre(OPT)
+  assert(res.projets[1] == pb and res.roots[1].have[1] == 10 and res.roots[2].have[1] == 2, "B d'abord, maintenant")
+  -- Le Brouillon y compte, en dernier, même mis avant.
+  local b = ns.brouillon()
+  ns.projetAjouter(b, 3575, 5)
+  ns.besoinsMettre(b)
+  res = ns.besoinsArbre(OPT)
+  assert(#res.projets == 3 and res.projets[3] == b and res.roots[3].have[1] == 0 and besoin(res, 3575).need == 13, "le Brouillon, en dernier")
+  -- Chaque projet avec ses choix de case : A fond son minerai (sans prendre de barres), B et le Brouillon achètent.
+  AzerothCommuneDB.recipes = { [3307] = { name = "Fonte du fer", output = 3575, reagents = { { id = 2772, qty = 1 } } } }
+  ns.projetChoix(pa, 3575, "fabriquer"); ns.projetChoix(pb, 3575, "acheter"); ns.projetChoix(b, 3575, "acheter")
+  res = ns.besoinsArbre({ bags = true, unlearned = true })
+  assert(besoin(res, 2772).required == 10 and besoin(res, 3575).need == 3, "choix de case de chacun : A fond 10 minerais")
+  -- Un projet supprimé sort des Besoins ; une modification d'un projet s'y voit au calcul suivant.
+  ns.projetQuantite(pb, 1, 20)
+  assert(besoin(ns.besoinsArbre(OPT), 3575).required == 25, "la quantité changée de B compte (20 + 5 du Brouillon ; A fond)")
+  ns.ouvrirProjet(pb.id); ns.supprimerProjet()
+  assert(#ns.besoinsProjets() == 2 and ns.besoinsProjets()[1] == pa, "B supprimé : plus dans les Besoins")
+  ns.viderBrouillon(); ns.besoinsRetirer(pa)
+end
+print("Composants : Besoins sur plusieurs projets, un seul stock OK")
+
 -- Recettes équivalentes (#46) : vrai-argent par le minage (10098) ou par la transmutation (11480), sans prix. Le choix ne
 -- dépend pas de l'ordre de la base des recettes : personne ne les connaît → le plus petit identifiant ; un perso connaît la
 -- transmutation → elle.
@@ -468,23 +518,53 @@ do
 end
 print("Composants : API publique OK")
 
--- Ctrl+clic droit sur un objet (lien) : il entre dans le projet affiché, une fois ; dans un projet tenu, un nouveau projet.
+-- Le Brouillon (CONTEXT.md) : Ctrl+clic droit sur un objet (lien) l'y met, une fois, jamais dans le projet affiché ; il
+-- n'est pas dans la liste des projets ni dans « < » et « > » ; « + » en fait un vrai projet (lignes et choix de case) et
+-- il se vide.
 do
   C_Item.GetItemInfoInstant = function() return nil, nil, nil, nil, nil, 4 end -- une arme, pas une recette
   local ouvrir = ns.openCraftWindow
   ns.openCraftWindow = noop -- pas d'interface hors jeu
+  local b = ns.brouillon()
+  assert(ns.estBrouillon(b) and #b.lines == 0, "un Brouillon, vide au départ")
   local p = Composants.NouveauProjet()
   ns.ctrlClicDroit(link(5541, "Marteau"))
+  assert(#p.lines == 0 and #b.lines == 1 and b.lines[1].id == 5541 and b.lines[1].qty == 1, "dans le Brouillon, pas le projet affiché")
+  ns.projetQuantite(b, 1, 3)
   ns.ctrlClicDroit(link(5541, "Marteau"))
-  assert(#p.lines == 1 and p.lines[1].id == 5541 and p.lines[1].qty == 1, "dans le projet affiché, une fois")
-  Composants.Tenir(p, "tenu")
-  ns.ctrlClicDroit(link(2841, "Barre de bronze"))
-  local q = ns.projetCourant()
-  assert(q ~= p and #p.lines == 1 and q.lines[1].id == 2841, "projet tenu : un nouveau projet")
+  assert(#b.lines == 1 and b.lines[1].qty == 3, "déjà dans le Brouillon : sa quantité ne bouge pas")
   ns.ctrlClicDroit("pas un lien")
+  ns.ctrlClicDroit(link(2841, "Barre de bronze"))
+  assert(#b.lines == 2 and #p.lines == 0, "deux objets au Brouillon")
   ns.openCraftWindow = ouvrir
+  -- Hors de la liste des projets ; on l'affiche par son bouton, « < » et « > » n'y passent jamais.
+  for _, q in ipairs(Composants.Projets()) do assert(q ~= b, "le Brouillon dans la liste des projets") end
+  assert(ns.ouvrirBrouillon() == b and ns.projetCourant() == b, "le Brouillon s'affiche par son bouton")
+  local n = #Composants.Projets()
+  for _ = 1, n + 1 do assert(ns.changerProjet(1) ~= b, "« > » passe par le Brouillon") end
+  ns.ouvrirBrouillon()
+  for _ = 1, n + 1 do assert(ns.changerProjet(-1) ~= b, "« < » passe par le Brouillon") end
+  -- On y retire une ligne, on le vide.
+  assert(ns.projetRetirer(b, 2) and #b.lines == 1, "une ligne retirée")
+  ns.viderBrouillon()
+  assert(#b.lines == 0, "vidé")
+  -- « + » : un vrai projet avec ses lignes et ses choix de case ; le Brouillon se vide.
+  ns.projetAjouter(b, 5541, 2)
+  ns.projetChoix(b, 2841, "acheter")
+  ns.ouvrirBrouillon()
+  local q = ns.brouillonEnProjet()
+  assert(q and not ns.estBrouillon(q) and Composants.Projets()[#Composants.Projets()] == q, "un vrai projet, dans la liste")
+  assert(#q.lines == 1 and q.lines[1].id == 5541 and q.lines[1].qty == 2 and q.choix[2841] == "acheter", "ses lignes, ses choix de case")
+  assert(#b.lines == 0 and b.choix == nil and ns.projetCourant() == q, "le Brouillon vidé, le projet affiché")
+  assert(ns.brouillonEnProjet() == nil and #Composants.Projets() == n + 1, "Brouillon vide : pas de projet vide")
+  -- On n'y commande rien : Composants ne demande jamais à Handshake les apports du Brouillon.
+  local demande
+  Handshake = { Apports = function(x) demande = x return {} end }
+  assert(ns.apportsHandshake(b) == nil and not demande, "pas d'apports pour le Brouillon")
+  assert(ns.apportsHandshake(q) and demande == q, "un projet, si")
+  Handshake = nil
 end
-print("Composants : Ctrl+clic droit OK")
+print("Composants : Brouillon, Ctrl+clic droit OK")
 
 -- La TOC : catégorie Métiers, le socle requis, Handshake facultatif, ses données propres ; jamais tests/ ni check.lua.
 assert(TOC:find("\n## Title: Composants\n", 1, true) and TOC:find("\n## Category: Professions\n## Category-frFR: Métiers\n", 1, true), "titre, catégorie")

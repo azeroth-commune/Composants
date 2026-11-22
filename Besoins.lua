@@ -1,8 +1,42 @@
--- Composants, les Besoins du projet affiché (CONTEXT.md) : une petite fenêtre à garder ouverte pendant qu'on rassemble.
--- Chaque ligne avance quand l'objet arrive dans les sacs (ou la banque, les autres persos, selon les options) ; coche verte
--- quand c'est complet. En dessous, ce qu'apportent les commandes Handshake (quand il est là), puis les recettes pas encore
--- apprises. HV ouvert : clic sur une ligne = la chercher à l'HV.
+-- Composants, les Besoins (CONTEXT.md) : les objets à réunir pour les projets qu'on y a mis, puis le Brouillon, sur un
+-- seul stock ; une petite fenêtre à garder ouverte pendant qu'on rassemble. Chaque ligne avance quand l'objet arrive dans
+-- les sacs (ou la banque, les autres persos, selon les options) ; coche verte quand c'est complet. En dessous, ce
+-- qu'apportent les commandes Handshake (quand il est là), puis les recettes pas encore apprises. HV ouvert : clic sur une
+-- ligne = la chercher à l'HV.
 local _, ns = ...
+
+-- Les projets mis dans les Besoins : ComposantsDB.besoins = { identités }, dans l'ordre où on les y a mis (il décide à qui
+-- va le stock). Le Brouillon n'y est jamais rangé : il y compte toujours, en dernier.
+local function ids()
+  local d = ns.db()
+  d.besoins = d.besoins or {}
+  return d.besoins
+end
+function ns.dansBesoins(p)
+  for _, id in ipairs(ids()) do if id == p.id then return true end end
+  return ns.estBrouillon(p)
+end
+function ns.besoinsMettre(p)
+  if not ns.dansBesoins(p) then table.insert(ids(), p.id) end
+end
+function ns.besoinsRetirer(p)
+  local t = ids()
+  for i = #t, 1, -1 do if t[i] == p.id then table.remove(t, i) end end
+end
+-- Les projets des Besoins dans leur ordre, le Brouillon en dernier s'il a des lignes ; un projet supprimé en sort.
+function ns.besoinsProjets()
+  local t, out = ids(), {}
+  for i = #t, 1, -1 do if not ns.projet(t[i]) then table.remove(t, i) end end
+  for _, id in ipairs(t) do out[#out + 1] = ns.projet(id) end
+  if #ns.brouillon().lines > 0 then out[#out + 1] = ns.brouillon() end
+  return out
+end
+-- L'arbre des Besoins : les projets enchaînés sur un seul stock, chacun avec ses choix de case et ses apports Handshake.
+function ns.besoinsArbre(opts)
+  local projets, apports = ns.besoinsProjets(), {}
+  for _, p in ipairs(projets) do apports[p] = ns.apportsHandshake(p) end
+  return ns.arbreDe(projets, opts, apports)
+end
 
 -- L'objet qui apprend une recette : « Plans : Claymore en mithril », « Formule : … », « Patron : … ».
 -- ponytail: par le nom, faute de lien recette -> objet dans les données ; nil si jamais vu
@@ -19,15 +53,24 @@ function ns.recipeItem(name)
 end
 
 -- La liste des besoins : ce qui ne se fabrique pas dans l'arbre (acheté ou déjà en stock ; pas ce qu'une commande
--- apporte), avec combien il en faut et combien on en a ; puis les recettes pas apprises.
+-- apporte), avec combien il en faut et combien on en a, une ligne par objet (ligne d'un projet et composant d'un autre
+-- additionnés) ; puis les recettes pas apprises, une fois chacune.
 function ns.orderNeeds(res)
-  local rows, recipes = {}, {}
+  local rows, recipes, rowOf, seen = {}, {}, {}, {}
   for _, n in ipairs(res.cases) do
     local required = n.qty - n.made
     if required > 0 and (n.made == 0 or n.need > 0) and (n.apport or 0) == 0 then
-      rows[#rows + 1] = { id = n.id, required = required, have = n.have, need = n.need, cost = n.cost, unpriced = n.unpriced, how = n.how }
+      local r = rowOf[n.id]
+      if not r then
+        r = { id = n.id, required = 0, have = { 0, 0, 0 }, need = 0, cost = 0 }
+        rowOf[n.id], rows[#rows + 1] = r, r
+      end
+      r.required, r.need, r.cost = r.required + required, r.need + n.need, r.cost + (n.cost or 0)
+      for i = 1, 3 do r.have[i] = r.have[i] + n.have[i] end
+      r.unpriced, r.how = r.unpriced or n.unpriced, n.how or r.how
     end
-    if n.made > 0 and n.unknown and n.recipe then
+    if n.made > 0 and n.unknown and n.recipe and not seen[n.recipe.name] then
+      seen[n.recipe.name] = true
       recipes[#recipes + 1] = { name = n.recipe.name, item = ns.recipeItem(n.recipe.name), product = n.id }
     end
   end
@@ -139,13 +182,16 @@ local function title(text)
   frame.y = frame.y + 22
 end
 
-function ns.refreshNeeds(res)
+function ns.refreshNeeds()
   if not (frame and frame:IsShown()) then return end
-  local p = ns.projetCourant()
-  res = res or ns.projetArbre(p, nil, ns.apportsHandshake(p))
+  local res = ns.besoinsArbre()
   local list, recipes = ns.orderNeeds(res)
   used, frame.y = 0, 40
-  frame.head:SetText(p.name or "Projet")
+  frame.head:SetText("Besoins")
+  -- Les projets, dans l'ordre où le stock leur va.
+  for i, p in ipairs(res.projets) do title(("|cffbbbbbb%d. %s|r"):format(i, p.name or "?")) end
+  if #res.projets == 0 then title("|cff999999Coche « dans les Besoins » sur un projet ; le Brouillon y compte.|r") end
+  frame.y = frame.y + 4
 
   title("À rassembler")
   local done, buy = 0, 0
@@ -162,7 +208,7 @@ function ns.refreshNeeds(res)
     if r.need > 0 then info = info .. (r.unpriced and "\nNi prix ni recette" or ("\nReste %d à %s"):format(r.need, r.how == "marchand" and "acheter au marchand" or "acheter à l'HV")) end
     line(C_Item.GetItemIconByID(r.id), ns.itemLabel(r.id), count, r.id, info, r.have, r.required, r.unpriced and { 0.9, 0.3, 0.3 } or { 0.6, 0.6, 0.62 })
   end
-  if #list == 0 then title("|cff999999Rien : tout se fabriquera avec ce que tu as.|r") end
+  if #list == 0 and #res.projets > 0 then title("|cff999999Rien : tout se fabriquera avec ce que tu as.|r") end
   local brought = {}
   for _, n in ipairs(res.cases) do
     if (n.apport or 0) > 0 then brought[#brought + 1] = { id = n.id, qty = n.apport } end
