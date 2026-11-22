@@ -3,7 +3,8 @@
 -- les faire). Il ne connaît ni commandes, ni apports, ni contrats (Handshake, quand il est là) ; un autre add-on peut tenir
 -- ses lignes (projet tenu). Toute modification d'un projet passe par ce module, qui la signale (ns.quandChange) ; la
 -- fenêtre (Fenetre.lua) ne fait que dessiner.
--- Enregistrés dans ComposantsDB.projets[i] = { id (son identité), name, lines = { { id, qty } }, choix = { [id] =
+-- Enregistrés dans ComposantsDB.projets[i] = { id (son identité), name, lines = { { id, qty } ou { recette, fois } (une
+--   fabrication, CONTEXT.md) }, choix = { [id] =
 --   "fabriquer" | "acheter" }, tenu (la raison de celui qui tient ses lignes), created } ;
 --   ComposantsDB.courant = le rang du projet affiché ; ComposantsDB.brouillon = le Brouillon (un projet hors de la liste).
 local _, ns = ...
@@ -144,7 +145,7 @@ function ns.projetQuantite(p, i, qty)
   local ok, raison = ns.projetPeut(p, "lignes")
   if not ok then return false, raison end
   if not p.lines[i] then return false, "cette ligne n'existe pas" end
-  if qty and qty >= 1 then p.lines[i].qty = math.min(qty, 9999) end
+  if qty and qty >= 1 then p.lines[i][p.lines[i].recette and "fois" or "qty"] = math.min(qty, 9999) end -- fabrication : fois
   signaler(p, "lignes")
   return true
 end
@@ -158,8 +159,14 @@ function ns.projetRetirer(p, i)
 end
 
 -- choix = "fabriquer" (« + », décomposer), "acheter" (« – », tout fait) ou nil (le calcul des prix décide) ; libre
--- même dans un projet tenu.
+-- même dans un projet tenu, sauf « acheter » l'objet d'une fabrication du projet : sa case racine est toujours fabriquée.
 function ns.projetChoix(p, id, choix)
+  if choix == "acheter" then
+    for _, l in ipairs(p.lines) do
+      local r = l.recette and ns.recipes()[l.recette]
+      if r and r.output == id then return false, "toujours fabriqué : une fabrication de ce projet" end
+    end
+  end
   p.choix = p.choix or {}
   p.choix[id] = choix
   if not next(p.choix) then p.choix = nil end
@@ -221,9 +228,13 @@ local function cases(roots, choix)
     end
   end
   for i, r in ipairs(roots) do
-    local t = nodeOf("T" .. i, "target", r.id)
-    t.index = i
-    add(t, r)
+    if r.id then
+      local t = nodeOf("T" .. i, "target", r.id)
+      t.index, t.fabrication = i, r.fabrication
+      add(t, r)
+    else -- une fabrication sans objet produit (un enchantement) : seulement ses composants, sans case au-dessus
+      for _, part in ipairs(r.parts) do add(nodeOf("I" .. part.id, "item", part.id), part) end
+    end
   end
   return { cases = list, caseDe = nodes, liens = edges }
 end
@@ -374,7 +385,7 @@ function ns.arbreDe(projets, opts, apportsDe)
   for _, p in ipairs(projets) do
     for _, l in ipairs(p.lines) do -- les prix marchands lus une fois pour tout le calcul
       local i = #roots + 1
-      roots[i], market, stock, vendors = ns.craftPlan(l.id, l.qty, opts or db().options, stock, apportsDe and apportsDe[p], p.choix, vendors)
+      roots[i], market, stock, vendors = ns.craftPlan(l, opts or db().options, stock, apportsDe and apportsDe[p], p.choix, vendors)
       total = total + (roots[i].cost or 0)
       incomplete = incomplete or roots[i].incomplete or not roots[i].cost
     end

@@ -566,6 +566,60 @@ do
 end
 print("Composants : Brouillon, Ctrl+clic droit OK")
 
+-- Fabrication (CONTEXT.md) : une ligne « recette × nombre de fois » d'un projet tenu (une tranche de montée de Maîtrise).
+-- Sa case racine est toujours fabriquée avec cette recette (ni stock pris, ni achat ; son choix de case ne peut pas être
+-- « acheter ») ; une recette sans objet produit (un enchantement) n'a pour cases que ses composants ; dessous, les choix
+-- de case restent libres, et les Besoins comptent le stock de tous les persos comme pour les autres projets.
+do
+  local ALT = "Player-6942-00000A17"
+  local function prix(pc) return { tiers = { { price = pc, qty = 999 } } } end
+  donnees({ hv = { [2841] = prix(1), [2840] = prix(10), [3576] = prix(10), [2770] = prix(2), [10940] = prix(50) },
+    recettes = {
+      [2659] = { name = "Fonte du bronze", output = 2841, made_min = 2, profession = "Minage", reagents = { { id = 2840, qty = 1 }, { id = 3576, qty = 1 } } },
+      [2657] = { name = "Fonte du cuivre", output = 2840, profession = "Minage", reagents = { { id = 2770, qty = 1 } } },
+      [7420] = { name = "Enchanter le plastron - Vie mineure", profession = "Enchantement", reagents = { { id = 10940, qty = 1 } } } },
+    sacs = { [2841] = 50, [10940] = 1 },
+    persos = { [ALT] = { nom = "Alt Dupont", bags = { b = { items = { { id = 10940, count = 1 } } } } } } })
+  local p = Composants.NouveauProjet({ name = "Tranche" })
+  Composants.Tenir(p, "tenu par Maîtrise", { { recette = 2659, fois = 5 }, { recette = 7420, fois = 3 } })
+  -- La barre de bronze : 1 pc à l'HV, 50 en sac, fabriquée quand même, avec cette recette, 5 fois (2 barres par fonte).
+  local res = Composants.Arbre(p, true)
+  local barre = res.caseDe.T1
+  assert(barre and barre.id == 2841 and barre.kind == "target" and barre.made == 10 and barre.crafts == 5 and barre.recipeKey == 2659
+    and barre.need == 0, "fabrication : la case racine fabriquée avec sa recette")
+  assert(res.caseDe.I2840.qty == 5 and res.caseDe.I3576.qty == 5 and #res.caseDe.I2840.parents == 1, "ses composants : 5 cuivres, 5 étains")
+  assert(res.blocDe.Minage and res.blocDe.Minage.qty[2841] == 10, "son bloc : le minage livre les 10 barres")
+  local avecStock = ns.projetArbre(p, { bags = true, alts = true, unlearned = true })
+  assert(avecStock.caseDe.T1.made == 10 and avecStock.caseDe.T1.have[1] == 0, "les barres en sac ne sont pas prises")
+  -- L'enchantement : aucune case pour lui, seulement sa poussière, en tête de l'arbre.
+  assert(not res.caseDe.T2 and res.caseDe.I10940.qty == 3 and #res.caseDe.I10940.parents == 0, "enchantement : ses composants seulement")
+  assert(res.total == 5 * 2 + 5 * 10 + 3 * 50, "le coût : les composants (cuivre fondu, étain, poussière), pas la barre")
+  assert(ns.dessinArbre(res).byKey.I10940.col == 0, "la poussière de l'enchantement dessinée à l'étage des lignes")
+  -- Choix de case : la racine refuse « acheter » ; dessous, libres.
+  local ok, raison = Composants.Choix(p, 2841, "acheter")
+  assert(ok == false and type(raison) == "string" and not (p.choix and p.choix[2841]), "la racine ne s'achète pas")
+  assert(res.caseDe.I2840.made == 5, "témoin : le cuivre se fond (le minerai est moins cher)")
+  assert(Composants.Choix(p, 2840, "acheter") and Composants.Arbre(p, true).caseDe.I2840.made == 0, "dessous, libre : cuivre acheté")
+  Composants.Choix(p, 2840, nil)
+  -- Les Besoins : la barre fabriquée n'y est pas ; la poussière, avec le stock de mes sacs et d'un autre perso.
+  ns.viderBrouillon()
+  for _, q in ipairs(ns.besoinsProjets()) do ns.besoinsRetirer(q) end
+  ns.besoinsMettre(p)
+  local function besoin(r, id) for _, l in ipairs((ns.orderNeeds(r))) do if l.id == id then return l end end end
+  local b = ns.besoinsArbre({ bags = true, alts = true, unlearned = true })
+  local poussiere = besoin(b, 10940)
+  assert(not besoin(b, 2841), "la barre fabriquée : rien à réunir")
+  assert(poussiere and poussiere.required == 3 and poussiere.have[1] == 1 and poussiere.have[3] == 1 and poussiere.need == 1,
+    "la poussière : 1 en sac, 1 chez un autre perso, 1 à acheter")
+  assert(besoin(b, 2770).required == 5 and besoin(b, 3576).required == 5, "le minerai de cuivre et l'étain")
+  ns.besoinsRetirer(p)
+  -- Lâché, une ligne fabrication change de nombre de fois.
+  Composants.Tenir(p, nil)
+  assert(Composants.Quantite(p, 1, 7) and p.lines[1].fois == 7 and p.lines[1].qty == nil, "lâché : le nombre de fois se change")
+  commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
+end
+print("Composants : lignes fabrication d'un projet tenu OK")
+
 -- La TOC : catégorie Métiers, le socle requis, Handshake facultatif, ses données propres ; jamais tests/ ni check.lua.
 assert(TOC:find("\n## Title: Composants\n", 1, true) and TOC:find("\n## Category: Professions\n## Category-frFR: Métiers\n", 1, true), "titre, catégorie")
 assert(TOC:find("\n## Notes: Chaque objet décomposé en ses composants, jusqu'aux matières premières : l'arbre, vos projets, ce qu'il reste à réunir.\n", 1, true), "notes")

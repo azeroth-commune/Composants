@@ -3,8 +3,9 @@
 local _, ns = ...
 
 Composants = {
-  -- Projets. p = le projet lui-même (une table : p.id son identité stable, p.name, p.lines = { { id, qty } }, p.choix,
-  -- p.tenu) ; on le lit, on ne le modifie que par ces fonctions.
+  -- Projets. p = le projet lui-même (une table : p.id son identité stable, p.name, p.lines, p.choix, p.tenu) ; on le lit,
+  -- on ne le modifie que par ces fonctions. Une ligne : un objet { id = itemID, qty = quantité }, ou une fabrication
+  -- { recette = sortID (la clé de la base des recettes), fois = nombre de fois }.
   NouveauProjet = function(t) return ns.nouveauProjet(t) end,          -- t = { name, lines } facultatif ; il devient le projet affiché
   Projet = function(id) return (ns.projet(id)) end,                    -- nil s'il n'existe plus
   Projets = function() return ns.db().projets end,                     -- dans l'ordre de la liste
@@ -25,7 +26,10 @@ Composants = {
   Choix = function(p, id, choix) return ns.projetChoix(p, id, choix) end,
   Peut = function(p, quoi) return ns.projetPeut(p, quoi) end,          -- quoi = "lignes" ou "choix"
   -- Projet tenu : Tenir(p, raison, lignes) prend les lignes (les nouvelles, ou nil pour garder celles qu'il a) ; appelé de
-  -- nouveau, remet les lignes à jour, les choix de case restent ; Tenir(p, nil) le lâche.
+  -- nouveau, remet les lignes à jour, les choix de case restent ; Tenir(p, nil) le lâche. Une ligne fabrication
+  -- { recette, fois } (CONTEXT.md) : sa case racine est toujours fabriquée avec cette recette (ni stock, ni achat ;
+  -- Choix(p, son objet, "acheter") refuse) ; sans objet produit (un enchantement), seuls ses composants sont des cases.
+  -- Dessous, les choix de case restent libres.
   Tenir = function(p, raison, lignes) ns.projetTenir(p, raison, lignes) end,
   -- L'arbre et les blocs : p = un projet, ou toute table { lines, choix }. sansStock = true : toutes les recettes, aucun
   -- stock déduit (ce que verrait un artisan) ; sinon les options de la fenêtre. apports = { [id] = true } facultatif : ces
