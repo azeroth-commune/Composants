@@ -29,6 +29,9 @@ local function H() return Handshake end
 -- Handshake, si ce projet peut avoir des commandes : jamais le Brouillon (on n'y commande rien), qui n'est donc jamais
 -- passé à Handshake.
 local function HPour(p) return not ns.estBrouillon(p) and H() or nil end
+-- Le projet affiché ; déclaré ici, avant toute fonction qui l'appelle (déclaré plus bas, une bulle d'étiquette de commande
+-- appelait un « projet » global inexistant).
+local function projet() return ns.projetCourant() end
 -- Les apports des commandes Handshake de ce projet (nil sans Handshake) : ces cases sortent de l'arbre.
 function ns.apportsHandshake(p) return HPour(p) and H().Apports(p) or nil end
 -- Vue du dessin : zoom (× l'échelle qui fait tout tenir en largeur) et décalage, en unités du dessin.
@@ -68,7 +71,6 @@ end
 local cards, lines, labels = {}, {}, {}
 
 local function opts() return ns.db().options end
-local function projet() return ns.projetCourant() end
 -- Affichage seulement (« il le fournit », « mon prix ») : ce qui se modifie, la fenêtre le demande au projet (ns.projetPeut).
 local function replying() return HPour(projet()) and H().EstReponse(projet()) end -- « je réponds » : la Réponse de Handshake
 local function lignes() return (ns.projetPeut(projet(), "lignes")) end -- ajouter, retirer, changer une quantité
