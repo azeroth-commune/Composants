@@ -40,19 +40,9 @@ _Avoid_: groupe, bande
 Ce qu'on décide pour une case de l'arbre : la décomposer ou l'acheter toute faite ; sans choix, le calcul des prix décide. Un choix de case appartient à un projet, jamais à tout le joueur. Apporter une case n'est pas un choix de case : c'est un terme de la commande Handshake (voir Apport dans `../Handshake/CONTEXT.md`).
 _Avoid_: force, choix forcé
 
-### Montée (add-on Maîtrise, à venir ; ces mots iront dans son glossaire)
+### Montée
 
-**Montée**:
-Faire passer un métier d'un personnage d'un niveau à n'importe quel autre, pas seulement aux rangs (75, 150, 225, 300).
-_Avoid_: leveling, guide
-
-**Route**:
-La suite de recettes d'une montée, point par point, la moins chère aux prix d'achat du moment, réemplois compris et revente au marchand déduite (jamais celle de l'HV, incertaine) ; calculée, jamais écrite à la main, et seulement avec des recettes dont on sait où les apprendre.
-_Avoid_: guide, chemin, étapes
-
-**Tranche**:
-La part de la route qu'on fait maintenant, du niveau actuel jusqu'au curseur ; optimisée seule avec les prix du moment, elle devient un projet tenu dans Composants (ses Besoins = ce qu'il faut pour cette tranche seulement).
-_Avoid_: étape, session, palier (réservé aux paliers de prix de l'HV)
+Montée, Route, Tranche : glossaire de Maîtrise (`../Maitrise/CONTEXT.md`).
 
 ### Entraide
 
