@@ -15,4 +15,5 @@ Recherche.lua
 Fenetre.lua
 Besoins.lua
 Fabriquer.lua
+Infobulle.lua
 API.lua
