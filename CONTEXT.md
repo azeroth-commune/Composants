@@ -26,6 +26,10 @@ _Avoid_: projet verrouillé, projet figé
 Les objets à réunir pour les projets qu'on y a mis (Brouillon compris, en dernier), toujours à jour de leurs choix de case, avec ce qu'on en a déjà (sacs, banque, autres personnages) ; une petite fenêtre à part pour suivre ce qu'il reste à acheter ou à récolter. C'est le seul endroit où le stock se partage entre projets : il va aux projets dans l'ordre où on les y a mis, alors que la page d'un projet l'estime comme s'il était seul.
 _Avoid_: liste de courses, shopping
 
+**Récolte**:
+Un objet des Besoins que le joueur compte récolter plutôt qu'acheter ; il le décide dans les Besoins, une fois pour tous ses projets, et peut revenir sur ce choix d'un clic ; sans ce choix, l'objet est à acheter. Ce n'est pas un choix de case (qui appartient à un projet).
+_Avoid_: farm, choix de récolte
+
 ### L'arbre
 
 **Case**:
