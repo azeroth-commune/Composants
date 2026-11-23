@@ -828,8 +828,7 @@ local function build()
     local b = surBrouillon()
     if not orderName:HasFocus() then orderName:SetText(b and "Brouillon" or projet().name or "") end
     orderName:SetEnabled(not b)
-    frame.besoinsCB:SetShown(not b) -- (son texte avec elle)
-    frame.besoinsCB:SetChecked(ns.dansBesoins(projet()))
+    if frame.needsB then frame.needsB:SetText(ns.dansBesoins(projet()) and "Besoins" or "Mettre dans les Besoins") end
   end
 
   -- Ligne d'ajout : déposer un objet sur la case, ou taper son nom.
@@ -852,20 +851,21 @@ local function build()
   add:SetPoint("LEFT", qty, "RIGHT", 8, 0)
   add:SetText("Ajouter")
   add:SetScript("OnClick", submit)
-  local needsB = button("Besoins", 90, function() ns.toggleNeeds() end)
-  needsB:SetPoint("TOPRIGHT", -14, -75)
-  -- Le projet affiché dans les Besoins (le Brouillon y est toujours, en dernier : pas de case pour lui).
-  local besoinsCB = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-  besoinsCB:SetSize(22, 22)
-  besoinsCB.label = besoinsCB:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  besoinsCB.label:SetText("dans les Besoins")
-  besoinsCB.label:SetPoint("LEFT", besoinsCB, "RIGHT", 0, 0)
-  besoinsCB:SetPoint("TOPRIGHT", -14 - besoinsCB.label:GetStringWidth(), -106) -- sous « Besoins », le texte aligné à droite
-  besoinsCB:SetScript("OnClick", function(self)
-    if self:GetChecked() then ns.besoinsMettre(projet()) else ns.besoinsRetirer(projet()) end
-    if ns.refreshNeeds then ns.refreshNeeds() end
+  -- Les Besoins, un seul bouton (retour de Virgile : un bouton et une case, c'était bizarre). Le projet affiché n'y est pas :
+  -- « Mettre dans les Besoins » l'y met et ouvre la fenêtre ; il y est (ou c'est le Brouillon, toujours dedans) :
+  -- « Besoins » ouvre ou ferme la fenêtre. On retire un projet en cliquant sur son nom dans la fenêtre des Besoins.
+  local needsB = button("Besoins", 170, function()
+    local p = projet()
+    if not ns.dansBesoins(p) then
+      ns.besoinsMettre(p)
+      ns.ouvrirBesoins()
+      frame.syncProjet()
+    else
+      ns.toggleNeeds()
+    end
   end)
-  frame.besoinsCB = besoinsCB
+  needsB:SetPoint("TOPRIGHT", -14, -75)
+  frame.needsB = needsB
   local function dropped()
     local kind, id = GetCursorInfo()
     if kind == "item" then

@@ -155,11 +155,10 @@ test("le Brouillon : dans le menu « Projets », qui en fait un projet", functio
     assertTrue(not affiche("Brouillon"), "le nouveau projet affiché")
 end) end)
 
--- Les Besoins : on y met des projets par la case « dans les Besoins » ; un « + » ou un « – » s'y voit aussitôt.
-local function dansBesoins()
-    return tous(ComposantsFrame, function(c)
-        return c:GetObjectType() == "CheckButton" and c.label and c.label:GetText() == "dans les Besoins"
-    end)[1]
+-- Les Besoins : un seul bouton, « Mettre dans les Besoins » (le projet affiché y entre, la fenêtre s'ouvre) ou « Besoins »
+-- (il y est : ouvrir, fermer) ; on retire un projet en cliquant sur son nom dans la fenêtre. Plus de case à cocher.
+local function ligneProjet(p)
+    return tous(ComposantsBesoinsFrame, function(c) return c.projet == p and c:IsShown() end)[1]
 end
 local function lignesBesoins()
     local out = {}
@@ -171,14 +170,16 @@ test("Besoins de deux projets : la petite fenêtre, un « – » s'y voit aussit
     ComposantsDB.besoins = {}
     SlashCmdList.COMPOSANTS("demo set")
     local a = projet()
-    dansBesoins():Click()
+    assertEquals(0, #tous(ComposantsFrame, function(c) return c:GetObjectType() == "CheckButton" and c.label and c.label:GetText() == "dans les Besoins" end), "plus de case")
+    bouton("Mettre dans les Besoins"):Click()
+    assertTrue(ComposantsBesoinsFrame:IsShown(), "mettre dans les Besoins ouvre la fenêtre")
+    assertNotNil(bouton("Besoins"), "il y est : le bouton dit « Besoins »")
     SlashCmdList.COMPOSANTS("demo ceinture")
     local p = projet()
-    assertTrue(not dansBesoins():GetChecked(), "pas encore dans les Besoins")
-    dansBesoins():Click()
+    assertNotNil(bouton("Mettre dans les Besoins"), "pas encore dans les Besoins")
+    bouton("Mettre dans les Besoins"):Click()
     assertEquals(a.id, ComposantsDB.besoins[1])
     assertEquals(p.id, ComposantsDB.besoins[2])
-    bouton("Besoins"):Click()
     assertTrue(ComposantsBesoinsFrame:IsShown())
     assertTrue(next(lignesBesoins()) ~= nil, "des objets à réunir")
     local envoyer = tous(ComposantsBesoinsFrame, function(c) return c.GetText and (c:GetText() or ""):find("Envoyer", 1, true) end)
@@ -195,8 +196,11 @@ test("Besoins de deux projets : la petite fenêtre, un « – » s'y voit aussit
     assertNotNil(lignesBesoins()[id], "achetée : dans les Besoins")
     for _, c in ipairs(cases()) do if c.node.id == id then c:Click() end end -- « + » : retour au calcul
     assertNil(lignesBesoins()[id], "de nouveau fabriquée : hors des Besoins")
-    dansBesoins():Click()
-    assertEquals(1, #ComposantsDB.besoins, "retiré des Besoins")
+    assertNotNil(ligneProjet(p), "le projet, une ligne cliquable dans les Besoins")
+    ligneProjet(p):Click()
+    assertEquals(1, #ComposantsDB.besoins, "retiré des Besoins par sa ligne")
+    assertNotNil(bouton("Mettre dans les Besoins"), "le bouton suit")
+    ComposantsBesoinsFrame:Hide()
     ComposantsDB.besoins = {}
 end) end)
 
@@ -238,8 +242,8 @@ test("projet tenu à lignes fabrication : la racine toujours fabriquée, l'encha
         assertNil(p.choix and p.choix[2840])
         -- Les Besoins : la poussière à réunir.
         ComposantsDB.besoins = {}
-        dansBesoins():Click()
-        bouton("Besoins"):Click()
+        if ComposantsBesoinsFrame then ComposantsBesoinsFrame:Hide() end
+        bouton("Mettre dans les Besoins"):Click()
         assertNotNil(lignesBesoins()[10940], "la poussière dans les Besoins")
         -- La barre de bronze n'y paraît que par sa recette à apprendre (personne ne la connaît ici), jamais à réunir.
         local barreB = lignesBesoins()[2841]
@@ -341,3 +345,19 @@ else
         assertTrue(apportee.apport > 0, "la case est apportée dans l'arbre")
     end) end)
 end
+
+-- Les Besoins défilent : une longue liste ne fait pas dépasser la fenêtre (retour de Virgile).
+test("Besoins : la fenêtre plafonne sa hauteur et la liste défile", function() sansRecettes(function()
+    ComposantsDB.besoins = {}
+    SlashCmdList.COMPOSANTS("demo set")
+    local p = projet()
+    for id = 2840, 2880 do Composants.Ajouter(p, id, 3) end -- une quarantaine de lignes de plus
+    if ComposantsBesoinsFrame then ComposantsBesoinsFrame:Hide() end
+    bouton("Mettre dans les Besoins"):Click()
+    assertTrue(ComposantsBesoinsFrame:GetHeight() <= 520, "hauteur plafonnée : " .. ComposantsBesoinsFrame:GetHeight())
+    local n = 0
+    for _ in pairs(lignesBesoins()) do n = n + 1 end
+    assertTrue(n > 15, "beaucoup de lignes : " .. n)
+    ComposantsBesoinsFrame:Hide()
+    ComposantsDB.besoins = {}
+end) end)

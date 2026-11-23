@@ -82,6 +82,8 @@ function ns.orderNeeds(res)
 end
 
 local W, ROW = 380, 28
+local LARGE = W - 50 -- largeur d'une ligne, la barre de défilement à droite
+local HAUT_MAX = 520 -- au-delà, la liste défile (retour de Virgile : elle dépassait de l'écran)
 local COLORS = { { 0.35, 0.80, 0.45 }, { 0.35, 0.60, 1.00 }, { 0.66, 0.56, 1.00 } }
 local READY = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14|t"
 local frame, rows, used = nil, {}, 0
@@ -103,8 +105,8 @@ local function ahSearch(id)
 end
 
 local function newRow()
-  local r = CreateFrame("Button", nil, frame)
-  r:SetSize(W - 28, ROW)
+  local r = CreateFrame("Button", nil, frame.contenu)
+  r:SetSize(LARGE, ROW)
   r.icon = r:CreateTexture(nil, "ARTWORK")
   r.icon:SetSize(20, 20)
   r.icon:SetPoint("TOPLEFT", 0, -2)
@@ -118,10 +120,17 @@ local function newRow()
   r.bg = r:CreateTexture(nil, "ARTWORK")
   r.bg:SetColorTexture(1, 1, 1, 0.08)
   r.bg:SetPoint("BOTTOMLEFT", 26, 4)
-  r.bg:SetSize(W - 54, 4)
+  r.bg:SetSize(LARGE - 26, 4)
   r.seg = {}
   for i = 1, 4 do r.seg[i] = r:CreateTexture(nil, "OVERLAY") end
   r:SetScript("OnEnter", function(self)
+    if self.projet then
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText(self.projet.name or "?")
+      GameTooltip:AddLine("Clic : retirer ce projet des Besoins", 0.66, 0.56, 1)
+      GameTooltip:Show()
+      return
+    end
     if not self.itemID then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetItemByID(self.itemID)
@@ -130,7 +139,13 @@ local function newRow()
     GameTooltip:Show()
   end)
   r:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  r:SetScript("OnClick", function(self) if self.itemID then ahSearch(self.itemID) end end)
+  r:SetScript("OnClick", function(self)
+    if self.projet then -- un projet des Besoins : il en sort (le Brouillon n'a pas cette ligne cliquable)
+      ns.besoinsRetirer(self.projet)
+      ns.refreshNeeds()
+      if ns.refreshCraftWindow then ns.refreshCraftWindow() end
+    elseif self.itemID then ahSearch(self.itemID) end
+  end)
   return r
 end
 
@@ -144,8 +159,8 @@ local function line(icon, text, count, itemID, info, have, required, missingColo
   r.icon:SetShown(icon ~= nil)
   r.text:SetText(text)
   r.count:SetText(count or "")
-  r.itemID, r.info = itemID, info
-  local left, wmax = 26, W - 54
+  r.itemID, r.info, r.projet = itemID, info, nil
+  local left, wmax = 26, LARGE - 26
   local parts = have and { have[1], have[2], have[3], math.max(0, required - have[1] - have[2] - have[3]) } or {}
   r.bg:SetShown(have ~= nil)
   for i = 1, 4 do
@@ -177,7 +192,7 @@ local function title(text)
   for i = 1, 4 do r.seg[i]:Hide() end
   r.text:SetText("|cffffd100" .. text .. "|r")
   r.count:SetText("")
-  r.itemID = nil
+  r.itemID, r.projet = nil, nil
   r:Show()
   frame.y = frame.y + 22
 end
@@ -186,11 +201,14 @@ function ns.refreshNeeds()
   if not (frame and frame:IsShown()) then return end
   local res = ns.besoinsArbre()
   local list, recipes = ns.orderNeeds(res)
-  used, frame.y = 0, 40
+  used, frame.y = 0, 0
   frame.head:SetText("Besoins")
-  -- Les projets, dans l'ordre où le stock leur va.
-  for i, p in ipairs(res.projets) do title(("|cffbbbbbb%d. %s|r"):format(i, p.name or "?")) end
-  if #res.projets == 0 then title("|cff999999Coche « dans les Besoins » sur un projet ; le Brouillon y compte.|r") end
+  -- Les projets, dans l'ordre où le stock leur va ; clic sur l'un d'eux : il sort des Besoins (pas le Brouillon).
+  for i, p in ipairs(res.projets) do
+    title(("|cffbbbbbb%d. %s|r"):format(i, p.name or "?"))
+    if not ns.estBrouillon(p) then rows[used].projet = p; rows[used].count:SetText("|cff888888retirer|r") end
+  end
+  if #res.projets == 0 then title("|cff999999« Mettre dans les Besoins » sur un projet ; le Brouillon y compte.|r") end
   frame.y = frame.y + 4
 
   title("À rassembler")
@@ -237,7 +255,8 @@ function ns.refreshNeeds()
   local foot = ("%d/%d prêts"):format(done, #list)
   if buy > 0 then foot = foot .. " · à acheter : " .. ns.moneyShort(buy) end
   frame.foot:SetText(foot)
-  frame:SetHeight(frame.y + 40)
+  frame.contenu:SetHeight(math.max(1, frame.y))
+  frame:SetHeight(math.min(frame.y + 80, HAUT_MAX))
 end
 
 local function build()
@@ -252,6 +271,13 @@ local function build()
   frame.head:SetWordWrap(false)
   frame.foot = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   frame.foot:SetPoint("BOTTOMLEFT", 14, 14)
+  -- La liste défile au-delà de HAUT_MAX (molette ou barre).
+  frame.scroll = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
+  frame.scroll:SetPoint("TOPLEFT", 0, -40)
+  frame.scroll:SetPoint("BOTTOMRIGHT", -28, 34)
+  frame.contenu = CreateFrame("Frame", nil, frame.scroll)
+  frame.contenu:SetSize(LARGE + 14, 1)
+  frame.scroll:SetScrollChild(frame.contenu)
   local pending
   frame:RegisterEvent("BAG_UPDATE_DELAYED")
   frame:SetScript("OnEvent", function()
@@ -265,4 +291,9 @@ end
 function ns.toggleNeeds()
   if not frame then build() end
   frame:SetShown(not frame:IsShown())
+end
+-- Ouvre les Besoins (et les rafraîchit s'ils l'étaient déjà).
+function ns.ouvrirBesoins()
+  if not frame then build() end
+  if frame:IsShown() then ns.refreshNeeds() else frame:Show() end
 end
