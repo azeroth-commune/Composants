@@ -710,8 +710,17 @@ do
   f = ns.prochaineFabrication("Enchantement")
   assert(f.cle == 7420 and f.etat == "pret" and f.n == 2 and f.id == nil, "l'enchantement, 2 faisables sur 3")
   assert(ns.texteFabriquer(f) == "Fabriquer Enchanter le plastron - Vie mineure ×3", ns.texteFabriquer(f))
+  -- Un projet tenu depuis un autre perso (la tranche de Belegard, vue en jouant Riwanon) n'est pas proposé, ni pour son
+  -- métier ni comme « Ouvre le … » ; il revient quand on rejoue ce perso.
+  assert(p.tenuPar == UnitGUID("player"), "tenu depuis le perso connecté : noté")
+  local G0 = UnitGUID
+  UnitGUID = function(u) if u == "player" then return "Player-6942-00000A17" end end
+  assert(ns.prochaineFabrication("Minage") == nil and ns.prochaineFabrication("Couture") == nil, "le projet d'un autre perso : rien")
+  UnitGUID = G0
+  assert(ns.prochaineFabrication("Minage"), "de retour sur ce perso : de nouveau proposé")
   -- Lâché : plus rien à fabriquer.
   Composants.Tenir(p, nil)
+  assert(p.tenuPar == nil, "lâché : plus de perso noté")
   assert(ns.prochaineFabrication("Minage") == nil, "aucun projet tenu : pas de bouton")
   C_TradeSkillUI, C_Item.GetItemCount = nil, nil
   commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}

@@ -102,6 +102,9 @@ end
 -- il est rendu.
 function ns.projetTenir(p, raison, lignes)
   p.tenu = raison
+  -- le perso depuis lequel il est tenu (Maîtrise : sa tranche ; Handshake : sa Réponse) : « Fabriquer » ne propose que ceux
+  -- du perso connecté ; nil pour un projet tenu avant cette note (proposé à tous jusqu'au prochain « Mettre à jour »)
+  p.tenuPar = raison and UnitGUID("player") or nil
   if lignes then p.lines = lignes end
   signaler(p, "tenu")
 end
