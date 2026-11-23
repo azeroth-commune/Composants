@@ -204,6 +204,28 @@ test("Besoins de deux projets : la petite fenêtre, un « – » s'y voit aussit
     ComposantsDB.besoins = {}
 end) end)
 
+-- La Récolte (#18) : sur une ligne qui manque encore, la bascule « Achat » / « Récolte » ; l'état se lit sur le bouton.
+test("Besoins : la bascule « Achat » / « Récolte » d'une ligne", function() sansRecettes(function()
+    ComposantsDB.besoins, ComposantsDB.recolte = {}, nil
+    SlashCmdList.COMPOSANTS("demo set")
+    bouton("Mettre dans les Besoins"):Click()
+    local ligne
+    for _, c in pairs(lignesBesoins()) do if c.mode and c.mode:IsShown() then ligne = c break end end
+    assertNotNil(ligne, "une ligne qui manque, avec sa bascule")
+    local id = ligne.itemID
+    assertEquals("Achat", ligne.mode:GetText(), "sans choix : à acheter")
+    ligne.mode:Click()
+    ligne = lignesBesoins()[id]
+    assertEquals("Récolte", ligne.mode:GetText(), "un clic : à récolter")
+    assertTrue(ComposantsDB.recolte[id], "noté pour tous les projets")
+    assertTrue(ligne.count:GetText():find("à récolter", 1, true) ~= nil, "la ligne le dit, sans prix")
+    ligne.mode:Click()
+    assertEquals("Achat", lignesBesoins()[id].mode:GetText(), "de nouveau à acheter")
+    assertNil(ComposantsDB.recolte[id])
+    ComposantsBesoinsFrame:Hide()
+    ComposantsDB.besoins = {}
+end) end)
+
 -- Fabrication (CONTEXT.md) : un projet tenu par un autre add-on (une tranche de montée de Maîtrise), aux lignes « recette ×
 -- nombre de fois ». La fonte du bronze vient de la réserve du socle ; l'enchantement (sans objet produit, pas encore dans
 -- la réserve) est ajouté aux recettes vues le temps du test.

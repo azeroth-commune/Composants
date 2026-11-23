@@ -2,7 +2,8 @@
 -- seul stock ; une petite fenêtre à garder ouverte pendant qu'on rassemble. Chaque ligne avance quand l'objet arrive dans
 -- les sacs (ou la banque, les autres persos, selon les options) ; coche verte quand c'est complet. En dessous, ce
 -- qu'apportent les commandes Handshake (quand il est là), puis les recettes pas encore apprises. HV ouvert : clic sur une
--- ligne = la chercher à l'HV.
+-- ligne = la chercher à l'HV. Une ligne qui manque encore porte sa bascule « Achat » / « Récolte » ; ce qui reste à
+-- acheter devient, à chaque ouverture de l'HV, la liste d'achats d'Auctionator « Besoins (Composants) » (#18).
 local _, ns = ...
 
 -- Les projets mis dans les Besoins : ComposantsDB.besoins = { identités }, dans l'ordre où on les y a mis (il décide à qui
@@ -36,6 +37,55 @@ function ns.besoinsArbre(opts)
   local projets, apports = ns.besoinsProjets(), {}
   for _, p in ipairs(projets) do apports[p] = ns.apportsHandshake(p) end
   return ns.arbreDe(projets, opts, apports)
+end
+
+-- La Récolte (CONTEXT.md) : les objets des Besoins que le joueur compte récolter plutôt qu'acheter, pour tous ses
+-- projets : ComposantsDB.recolte = { [itemID] = true } ; sans choix, l'objet est à acheter.
+local function recoltes()
+  local d = ns.db()
+  d.recolte = d.recolte or {}
+  return d.recolte
+end
+function ns.estRecolte(id) return recoltes()[id] == true end
+function ns.basculerRecolte(id)
+  local t = recoltes()
+  t[id] = (not t[id]) or nil
+end
+
+-- Ce que les Besoins font acheter à l'HV : les lignes qui manquent encore (besoin − ce qu'on a), sauf la Récolte et ce
+-- qu'un marchand vend. { { id, qty }, … } dans l'ordre des Besoins.
+function ns.achatsHV(rows)
+  local out = {}
+  for _, r in ipairs(rows) do
+    if r.need > 0 and r.how ~= "marchand" and not ns.estRecolte(r.id) then out[#out + 1] = { id = r.id, qty = r.need } end
+  end
+  return out
+end
+
+-- La liste d'achats d'Auctionator « Besoins (Composants) », réécrite à chaque ouverture de l'HV (son API remplace une
+-- liste du même nom) : on la lance, l'HV ne montre que ces objets, avec la quantité qui manque. Recherche exacte par le
+-- nom du client (en français). Sans Auctionator, rien. Une liste vide n'est pas créée, mais une ancienne est vidée.
+ns.LISTE_AUCTIONATOR = "Besoins (Composants)"
+function ns.pousserAuctionator()
+  local api = Auctionator and Auctionator.API and Auctionator.API.v1
+  if not (api and api.CreateShoppingList and api.ConvertToSearchString) then return end
+  local termes = {}
+  for _, a in ipairs(ns.achatsHV((ns.orderNeeds(ns.besoinsArbre())))) do
+    local it = ns.items()[a.id]
+    local nom = (it and it.name) or C_Item.GetItemInfo(a.id)
+    if nom then termes[#termes + 1] = api.ConvertToSearchString("Composants", { searchString = nom, isExact = true, quantity = a.qty }) end
+  end
+  if #termes == 0 and not pcall(api.GetShoppingListItems, "Composants", ns.LISTE_AUCTIONATOR) then return 0 end
+  api.CreateShoppingList("Composants", ns.LISTE_AUCTIONATOR, termes)
+  return #termes
+end
+do
+  local f = CreateFrame("Frame")
+  f:RegisterEvent("AUCTION_HOUSE_SHOW")
+  f:SetScript("OnEvent", function()
+    local ok, err = pcall(ns.pousserAuctionator)
+    if not ok then geterrorhandler()(err) end
+  end)
 end
 
 -- L'objet qui apprend une recette : « Plans : Claymore en mithril », « Formule : … », « Patron : … ».
@@ -81,7 +131,7 @@ function ns.orderNeeds(res)
   return rows, recipes
 end
 
-local W, ROW = 380, 28
+local W, ROW = 420, 28 -- 420 : la place de la bascule « Achat » / « Récolte »
 local LARGE = W - 50 -- largeur d'une ligne, la barre de défilement à droite
 local HAUT_MAX = 520 -- au-delà, la liste défile (retour de Virgile : elle dépassait de l'écran)
 local COLORS = { { 0.35, 0.80, 0.45 }, { 0.35, 0.60, 1.00 }, { 0.66, 0.56, 1.00 } }
@@ -139,6 +189,27 @@ local function newRow()
     GameTooltip:Show()
   end)
   r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  -- La bascule « Achat » / « Récolte » d'une ligne qui manque encore : l'état se lit sur le bouton, un clic le change.
+  r.mode = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
+  r.mode:SetSize(70, 20)
+  r.mode:SetPoint("TOPRIGHT", 0, -1)
+  r.mode:SetScript("OnClick", function(b)
+    ns.basculerRecolte(b:GetParent().itemID)
+    ns.refreshNeeds()
+    if b:IsMouseOver() then b:GetScript("OnEnter")(b) end
+  end)
+  r.mode:SetScript("OnEnter", function(b)
+    GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
+    if ns.estRecolte(b:GetParent().itemID) then
+      GameTooltip:SetText("Tu le récoltes")
+      GameTooltip:AddLine("Clic : l'acheter (il entre dans la liste d'Auctionator)", 0.66, 0.56, 1)
+    else
+      GameTooltip:SetText("Tu l'achètes")
+      GameTooltip:AddLine("Clic : le récolter (il sort de la liste d'Auctionator)", 0.66, 0.56, 1)
+    end
+    GameTooltip:Show()
+  end)
+  r.mode:SetScript("OnLeave", function() GameTooltip:Hide() end)
   r:SetScript("OnClick", function(self)
     if self.projet then -- un projet des Besoins : il en sort (le Brouillon n'a pas cette ligne cliquable)
       ns.besoinsRetirer(self.projet)
@@ -160,6 +231,9 @@ local function line(icon, text, count, itemID, info, have, required, missingColo
   r.text:SetText(text)
   r.count:SetText(count or "")
   r.itemID, r.info, r.projet = itemID, info, nil
+  r.mode:Hide()
+  r.count:ClearAllPoints(); r.count:SetPoint("TOPRIGHT", 0, -4)
+  r.text:SetPoint("RIGHT", -90, 0)
   local left, wmax = 26, LARGE - 26
   local parts = have and { have[1], have[2], have[3], math.max(0, required - have[1] - have[2] - have[3]) } or {}
   r.bg:SetShown(have ~= nil)
@@ -182,6 +256,15 @@ local function line(icon, text, count, itemID, info, have, required, missingColo
   frame.y = frame.y + ROW
 end
 
+-- La bascule sur la ligne qui vient d'être posée.
+local function bascule(recolte)
+  local r = rows[used]
+  r.mode:SetText(recolte and "Récolte" or "Achat")
+  r.mode:Show()
+  r.count:ClearAllPoints(); r.count:SetPoint("RIGHT", r.mode, "LEFT", -6, 0)
+  r.text:SetPoint("RIGHT", -170, 0)
+end
+
 local function title(text)
   used = used + 1
   local r = rows[used] or newRow()
@@ -193,6 +276,8 @@ local function title(text)
   r.text:SetText("|cffffd100" .. text .. "|r")
   r.count:SetText("")
   r.itemID, r.projet = nil, nil
+  r.mode:Hide()
+  r.count:ClearAllPoints(); r.count:SetPoint("TOPRIGHT", 0, -4)
   r:Show()
   frame.y = frame.y + 22
 end
@@ -217,14 +302,19 @@ function ns.refreshNeeds()
     local have = r.have[1] + r.have[2] + r.have[3]
     local complete = r.need == 0
     if complete then done = done + 1 end
+    local recolte = not complete and ns.estRecolte(r.id)
     local count = complete and (READY .. " " .. r.required) or ("%d/%d"):format(have, r.required)
-    if not complete then
+    if recolte then
+      count = "|cff88ccffà récolter|r  " .. count -- ni prix ni total : ce n'est pas de l'or à dépenser
+    elseif not complete then
       count = (r.unpriced and "|cffe64d4dsans prix|r  " or (ns.moneyShort(r.cost) .. "  ")) .. count
       buy = buy + (r.cost or 0)
     end
     local info = ("Il en faut %d : %d sacs, %d banque, %d autres persos"):format(r.required, r.have[1], r.have[2], r.have[3])
-    if r.need > 0 then info = info .. (r.unpriced and "\nNi prix ni recette" or ("\nReste %d à %s"):format(r.need, r.how == "marchand" and "acheter au marchand" or "acheter à l'HV")) end
-    line(C_Item.GetItemIconByID(r.id), ns.itemLabel(r.id), count, r.id, info, r.have, r.required, r.unpriced and { 0.9, 0.3, 0.3 } or { 0.6, 0.6, 0.62 })
+    if recolte then info = info .. ("\nReste %d à récolter"):format(r.need)
+    elseif r.need > 0 then info = info .. (r.unpriced and "\nNi prix ni recette" or ("\nReste %d à %s"):format(r.need, r.how == "marchand" and "acheter au marchand" or "acheter à l'HV")) end
+    line(C_Item.GetItemIconByID(r.id), ns.itemLabel(r.id), count, r.id, info, r.have, r.required, (recolte and { 0.53, 0.8, 1 }) or (r.unpriced and { 0.9, 0.3, 0.3 }) or { 0.6, 0.6, 0.62 })
+    if not complete then bascule(recolte) end
   end
   if #list == 0 and #res.projets > 0 then title("|cff999999Rien : tout se fabriquera avec ce que tu as.|r") end
   local brought = {}

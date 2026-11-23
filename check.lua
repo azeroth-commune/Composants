@@ -157,6 +157,53 @@ do
 end
 print("Composants : Besoins sur plusieurs projets, un seul stock OK")
 
+-- La Récolte (CONTEXT.md, #18) et la liste d'achats d'Auctionator « Besoins (Composants) » : les lignes qui manquent
+-- encore, sauf la Récolte et ce qu'un marchand vend ; repasser sur « Achat » ne demande que ce qui manque encore.
+do
+  donnees({ hv = market, recettes = {}, sacs = { [3575] = 3 } })
+  AzerothCommuneDB.vendors = {}
+  local p = ns.nouveauProjet({ name = "Récolte", lines = { { id = 3575, qty = 10 } } })
+  ns.viderBrouillon()
+  for _, q in ipairs(ns.besoinsProjets()) do ns.besoinsRetirer(q) end
+  ns.besoinsMettre(p)
+  local function achats() return ns.achatsHV((ns.orderNeeds(ns.besoinsArbre()))) end
+  local a = achats()
+  assert(#a == 1 and a[1].id == 3575 and a[1].qty == 7, "sans choix : à acheter, ce qui manque (10 − 3)")
+  assert(not ns.estRecolte(3575))
+  ns.basculerRecolte(3575)
+  assert(ns.estRecolte(3575) and ComposantsDB.recolte[3575] == true and #achats() == 0, "Récolte : hors de la liste")
+  donnees({ hv = market, recettes = {}, sacs = { [3575] = 6 } }) -- on en a récolté 3, on en a marre
+  ns.basculerRecolte(3575)
+  a = achats()
+  assert(not ns.estRecolte(3575) and ComposantsDB.recolte[3575] == nil, "retour à l'achat : plus rien de noté")
+  assert(#a == 1 and a[1].qty == 4, "de nouveau à acheter : seulement ce qui manque encore (10 − 6)")
+  -- Ce qu'un marchand vend n'est pas dans la liste de l'HV ; une ligne complète non plus.
+  assert(#ns.achatsHV({ { id = 1, need = 2, how = "marchand" }, { id = 2, need = 0, how = "HV" }, { id = 3, need = 5 } }) == 1)
+
+  -- Auctionator : la liste est remplacée à l'ouverture de l'HV, recherche exacte par le nom, quantité qui manque.
+  assert(ns.pousserAuctionator() == nil, "sans Auctionator : rien")
+  AzerothCommuneItems.items[3575] = { name = "Barre de fer" }
+  local listes = {}
+  Auctionator = { API = { v1 = {
+    ConvertToSearchString = function(caller, t)
+      assert(caller == "Composants" and t.isExact)
+      return ('"%s";;0;0;0;0;0;0;0;0;;;;%d'):format(t.searchString, t.quantity)
+    end,
+    CreateShoppingList = function(caller, nom, termes) assert(caller == "Composants"); listes[nom] = termes end,
+    GetShoppingListItems = function(_, nom) return assert(listes[nom], "pas de liste") end,
+  } } }
+  assert(ns.pousserAuctionator() == 1)
+  local l = listes["Besoins (Composants)"]
+  assert(#l == 1 and l[1] == '"Barre de fer";;0;0;0;0;0;0;0;0;;;;4', l[1])
+  ns.basculerRecolte(3575) -- tout en Récolte : la liste existante est vidée
+  assert(ns.pousserAuctionator() == 0 and #listes["Besoins (Composants)"] == 0, "liste vidée")
+  listes = {}
+  assert(ns.pousserAuctionator() == 0 and listes["Besoins (Composants)"] == nil, "pas de liste vide créée")
+  Auctionator, AzerothCommuneItems.items[3575], ComposantsDB.recolte = nil, nil, nil
+  ns.besoinsRetirer(p)
+end
+print("Composants : Récolte et liste d'achats d'Auctionator OK")
+
 -- Recettes équivalentes (#46) : vrai-argent par le minage (10098) ou par la transmutation (11480), sans prix. Le choix ne
 -- dépend pas de l'ordre de la base des recettes : personne ne les connaît → le plus petit identifiant ; un perso connaît la
 -- transmutation → elle.

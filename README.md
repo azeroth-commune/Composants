@@ -18,7 +18,7 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
   pourquoi (« Ouvre la Forge », « Il manque … », « Recette inconnue : … »).
 - **Infobulle des objets** : au survol d'un objet, « Utilisé dans : <projets> » s'il entre dans l'arbre d'un projet (Brouillon
   compris) et « Fabriqué par : <persos> » si l'un de vos persos connaît une recette qui le fabrique ; rien sinon.
-- **Données propres** : `ComposantsDB` (projets, Brouillon, projets mis dans les Besoins, options de calcul). Rien de relevé n'y est gardé (ADR 0002 de l'atelier).
+- **Données propres** : `ComposantsDB` (projets, Brouillon, projets mis dans les Besoins, objets en Récolte, options de calcul). Rien de relevé n'y est gardé (ADR 0002 de l'atelier).
 
 ## Fichiers
 
@@ -31,7 +31,7 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 | `Fenetre.lua` | la fenêtre des projets, son dessin ; la barre des commandes de Handshake quand il est là ; Ctrl+clic droit ; `/composants` |
 | `Fabriquer.lua` | le bouton « Fabriquer » sous la fenêtre de métier : la prochaine fabrication des projets tenus |
 | `Infobulle.lua` | les lignes « Utilisé dans » / « Fabriqué par » dans l'infobulle des objets |
-| `Besoins.lua` | les Besoins : les projets qu'on y met (case « dans les Besoins »), puis le Brouillon, sur un seul stock ; leur fenêtre |
+| `Besoins.lua` | les Besoins : les projets qu'on y met, puis le Brouillon, sur un seul stock ; leur fenêtre, la bascule « Achat » / « Récolte », la liste d'achats d'Auctionator |
 | `API.lua` | le global `Composants` |
 
 ## API publique
