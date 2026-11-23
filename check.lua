@@ -617,6 +617,92 @@ do
 end
 print("Composants : lignes fabrication d'un projet tenu OK")
 
+-- « Fabriquer » (#14) : la prochaine fabrication d'un projet tenu pour le métier ouvert, du bas de l'arbre vers le haut ;
+-- son état lu dans la fenêtre de métier (C_TradeSkillUI) ; le compte avance avec les sacs, comme l'arbre.
+do
+  local function prix(pc) return { tiers = { { price = pc, qty = 999 } } } end
+  local sacs = { [2770] = 10 }
+  local function poser()
+    donnees({ hv = { [2840] = prix(100), [3576] = prix(10), [2770] = prix(2), [10940] = prix(50) },
+      recettes = {
+        [2659] = { name = "Fonte du bronze", output = 2841, made_min = 2, profession = "Minage", reagents = { { id = 2840, qty = 1 }, { id = 3576, qty = 1 } } },
+        [2657] = { name = "Fonte du cuivre", output = 2840, profession = "Minage", reagents = { { id = 2770, qty = 1 } } },
+        [7420] = { name = "Enchanter le plastron - Vie mineure", profession = "Enchantement", reagents = { { id = 10940, qty = 1 } } } },
+      sacs = sacs })
+    AzerothCommuneDB.chars[MOI].recipes = { Minage = { rank = 75, known = { [2659] = true, [2657] = true } } }
+  end
+  poser()
+  local appris, faisable = { [2659] = true, [2657] = true, [7420] = true }, { [2657] = 10, [7420] = 2 }
+  C_TradeSkillUI = {
+    GetRecipeInfo = function(k) return { learned = appris[k] or false } end,
+    GetCraftableCount = function(k) return faisable[k] or 0 end,
+    GetRecipeRequirements = function() return {} end,
+  }
+  C_Item.GetItemCount = function(id) return sacs[id] or 0 end
+  local p = Composants.NouveauProjet({ name = "Tranche Minage" })
+  Composants.Tenir(p, "Maîtrise : Minage de 50 à 75", { { recette = 2659, fois = 5 }, { recette = 7420, fois = 3 } })
+  local f = ns.prochaineFabrication("Minage")
+  assert(f and f.p == p and f.cle == 2657 and f.fois == 5 and f.etat == "pret" and f.n == 5,
+    "d'abord le cuivre à fondre (5 barres pour 5 bronzes), avant le bronze qui en a besoin")
+  assert(ns.texteFabriquer(f):find("^Fabriquer .+ ×5$"), ns.texteFabriquer(f))
+  -- Le compte avance : 3 barres de cuivre arrivent dans les sacs, il en reste 2 à fondre ; 5, on passe au bronze.
+  sacs[2840] = 3; poser()
+  f = ns.prochaineFabrication("Minage")
+  assert(f.cle == 2657 and f.fois == 2, "3 barres en sac : 2 à fondre")
+  sacs[2840] = 5; poser()
+  f = ns.prochaineFabrication("Minage")
+  assert(f.cle == 2659 and f.fois == 5 and f.etat == "manque" and f.manque == ns.itemLabel(3576), "le bronze : l'étain manque")
+  assert(ns.texteFabriquer(f) == "Il manque " .. ns.itemLabel(3576), ns.texteFabriquer(f))
+  appris[2659] = false
+  f = ns.prochaineFabrication("Minage")
+  assert(f.etat == "inconnue" and ns.texteFabriquer(f) == "Recette inconnue : Fonte du bronze", ns.texteFabriquer(f))
+  -- Une autre fenêtre de métier : la prochaine est ailleurs, le bouton le dit.
+  f = ns.prochaineFabrication("Couture")
+  assert(f.etat == "ailleurs" and ns.texteFabriquer(f) == "Ouvre le Minage", ns.texteFabriquer(f))
+  -- Un enchantement (pas d'objet produit) : sa recette, par son nom.
+  f = ns.prochaineFabrication("Enchantement")
+  assert(f.cle == 7420 and f.etat == "pret" and f.n == 2 and f.id == nil, "l'enchantement, 2 faisables sur 3")
+  assert(ns.texteFabriquer(f) == "Fabriquer Enchanter le plastron - Vie mineure ×3", ns.texteFabriquer(f))
+  -- Lâché : plus rien à fabriquer.
+  Composants.Tenir(p, nil)
+  assert(ns.prochaineFabrication("Minage") == nil, "aucun projet tenu : pas de bouton")
+  C_TradeSkillUI, C_Item.GetItemCount = nil, nil
+  commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
+end
+print("Composants : Fabriquer, la prochaine fabrication d'un projet tenu OK")
+
+-- L'infobulle des objets (#16) : « Utilisé dans » (les projets dont l'arbre le demande) et « Fabriqué par » (mes persos qui
+-- connaissent une recette qui le fabrique), rien pour un objet qui n'entre dans rien ; le cache suit les projets.
+do
+  local ALT = "Player-6942-00000A17"
+  local function prix(pc) return { tiers = { { price = pc, qty = 999 } } } end
+  donnees({ hv = { [2840] = prix(100), [3576] = prix(10), [2770] = prix(2), [2841] = prix(1000) },
+    recettes = {
+      [2659] = { name = "Fonte du bronze", output = 2841, made_min = 2, profession = "Minage", reagents = { { id = 2840, qty = 1 }, { id = 3576, qty = 1 } } },
+      [2657] = { name = "Fonte du cuivre", output = 2840, profession = "Minage", reagents = { { id = 2770, qty = 1 } } } },
+    persos = { [ALT] = { nom = "Alt Dupont", recipes = { Minage = { rank = 75, known = { [2659] = true } } } } } })
+  AzerothCommuneDB.chars[MOI].recipes = { Minage = { rank = 75, known = { [2657] = true } } }
+  local avant = ns.db().projets
+  ns.db().projets = {} -- les projets des tests précédents rendus à la fin
+  local p = Composants.NouveauProjet({ name = "Armure en bronze", lines = { { id = 2841, qty = 4 } } })
+  local function texte(id) return table.concat(ns.lignesInfobulle(id), " | ") end
+  assert(texte(2841):find("Utilisé dans : [^|]*Armure en bronze") and texte(2841):find("Fabriqué par : Alt$"), texte(2841))
+  assert(texte(2770):find("Armure en bronze") and not texte(2770):find("Fabriqué par"), "le minerai : dans l'arbre, personne ne le fabrique")
+  assert(texte(2840):find("Fabriqué par : Moi$"), texte(2840))
+  assert(#ns.lignesInfobulle(99999) == 0, "un objet qui n'entre dans rien : aucune ligne")
+  -- Le projet change (son nom, ses lignes) : le cache suit, par le signal des projets.
+  Composants.Renommer(p, "Cuirasse")
+  assert(texte(2841):find("Cuirasse") and not texte(2841):find("Armure en bronze"), texte(2841))
+  Composants.Supprimer(p.id)
+  assert(not texte(2770):find("Cuirasse"), "projet supprimé : plus dans l'infobulle")
+  -- Au-delà de 3 projets : les 3 premiers, puis « +N ».
+  for i = 1, 5 do Composants.NouveauProjet({ name = "P" .. i, lines = { { id = 2770, qty = 1 } } }) end
+  assert(texte(2770) == "Utilisé dans : P1, P2, P3 +2", texte(2770))
+  ns.db().projets = avant
+  commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
+end
+print("Composants : infobulle des objets OK")
+
 -- La TOC : catégorie Métiers, le socle requis, Handshake facultatif, ses données propres ; jamais tests/ ni check.lua.
 assert(TOC:find("\n## Title: Composants\n", 1, true) and TOC:find("\n## Category: Professions\n## Category-frFR: Métiers\n", 1, true), "titre, catégorie")
 assert(TOC:find("\n## Notes: Chaque objet décomposé en ses composants, jusqu'aux matières premières : l'arbre, vos projets, ce qu'il reste à réunir.\n", 1, true), "notes")
