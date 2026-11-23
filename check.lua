@@ -199,6 +199,21 @@ do
   assert(ns.pousserAuctionator() == 0 and #listes["Besoins (Composants)"] == 0, "liste vidée")
   listes = {}
   assert(ns.pousserAuctionator() == 0 and listes["Besoins (Composants)"] == nil, "pas de liste vide créée")
+  -- En direct, HV ouvert : une modification faite dans Composants réécrit la liste, seulement si elle change.
+  local ecritures, creer = 0, Auctionator.API.v1.CreateShoppingList
+  Auctionator.API.v1.CreateShoppingList = function(...) ecritures = ecritures + 1; return creer(...) end
+  ns.basculerRecolte(3575)
+  assert(ecritures == 0, "HV fermé : rien d'écrit")
+  AuctionHouseFrame = { IsShown = function() return true end }
+  ns.basculerRecolte(3575) -- en Récolte : rien à acheter, pas de liste existante
+  assert(ecritures == 0)
+  ns.basculerRecolte(3575)
+  assert(ecritures == 1 and listes["Besoins (Composants)"][1]:find(";4$"), "bascule HV ouvert : liste réécrite")
+  ns.projetQuantite(p, 1, 12) -- « ce projet a changé » : 12 − 6
+  assert(ecritures == 2 and listes["Besoins (Composants)"][1]:find(";6$"), listes["Besoins (Composants)"][1])
+  ns.besoinsMettre(p) -- déjà dedans : même liste
+  assert(ecritures == 2, "même liste : pas réécrite")
+  AuctionHouseFrame = nil
   Auctionator, AzerothCommuneItems.items[3575], ComposantsDB.recolte = nil, nil, nil
   ns.besoinsRetirer(p)
 end

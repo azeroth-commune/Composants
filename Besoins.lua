@@ -19,10 +19,12 @@ function ns.dansBesoins(p)
 end
 function ns.besoinsMettre(p)
   if not ns.dansBesoins(p) then table.insert(ids(), p.id) end
+  ns.besoinsChanges()
 end
 function ns.besoinsRetirer(p)
   local t = ids()
   for i = #t, 1, -1 do if t[i] == p.id then table.remove(t, i) end end
+  ns.besoinsChanges()
 end
 -- Les projets des Besoins dans leur ordre, le Brouillon en dernier s'il a des lignes ; un projet supprimé en sort.
 function ns.besoinsProjets()
@@ -50,6 +52,7 @@ function ns.estRecolte(id) return recoltes()[id] == true end
 function ns.basculerRecolte(id)
   local t = recoltes()
   t[id] = (not t[id]) or nil
+  ns.besoinsChanges()
 end
 
 -- Ce que les Besoins font acheter à l'HV : les lignes qui manquent encore (besoin − ce qu'on a), sauf la Récolte et ce
@@ -65,8 +68,12 @@ end
 -- La liste d'achats d'Auctionator « Besoins (Composants) », réécrite à chaque ouverture de l'HV (son API remplace une
 -- liste du même nom) : on la lance, l'HV ne montre que ces objets, avec la quantité qui manque. Recherche exacte par le
 -- nom du client (en français). Sans Auctionator, rien. Une liste vide n'est pas créée, mais une ancienne est vidée.
+-- HV ouvert, elle suit aussi en direct les modifications faites dans Composants (bascule, quantités, choix de case,
+-- projets mis ou retirés), seulement si elle change : Auctionator déplie la liste à chaque réécriture. Pas sur les
+-- changements de sacs : un achat en cours ne doit pas voir son écran sauter ; ils comptent à l'ouverture suivante.
 ns.LISTE_AUCTIONATOR = "Besoins (Composants)"
-function ns.pousserAuctionator()
+local derniere -- la dernière liste écrite (ses termes joints)
+function ns.pousserAuctionator(siChange)
   local api = Auctionator and Auctionator.API and Auctionator.API.v1
   if not (api and api.CreateShoppingList and api.ConvertToSearchString) then return end
   local termes = {}
@@ -75,10 +82,19 @@ function ns.pousserAuctionator()
     local nom = (it and it.name) or C_Item.GetItemInfo(a.id)
     if nom then termes[#termes + 1] = api.ConvertToSearchString("Composants", { searchString = nom, isExact = true, quantity = a.qty }) end
   end
+  local cle = table.concat(termes, "^")
+  if siChange and cle == derniere then return #termes end
   if #termes == 0 and not pcall(api.GetShoppingListItems, "Composants", ns.LISTE_AUCTIONATOR) then return 0 end
   api.CreateShoppingList("Composants", ns.LISTE_AUCTIONATOR, termes)
+  derniere = cle
   return #termes
 end
+function ns.besoinsChanges()
+  if not (AuctionHouseFrame and AuctionHouseFrame:IsShown()) then return end
+  local ok, err = pcall(ns.pousserAuctionator, true)
+  if not ok then geterrorhandler()(err) end
+end
+ns.quandChange(function() ns.besoinsChanges() end) -- un projet modifié (Projet.lua, chargé avant)
 do
   local f = CreateFrame("Frame")
   f:RegisterEvent("AUCTION_HOUSE_SHOW")
