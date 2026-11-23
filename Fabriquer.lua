@@ -68,9 +68,11 @@ end
 -- La première prête l'emporte ; aucune prête : la première du métier, avec sa raison.
 function ns.prochaineFabrication(metier)
   local T, d = C_TradeSkillUI, ns.db()
+  local moi = UnitGUID("player")
+  local function mien(p) return p and p.tenu and (p.tenuPar == nil or p.tenuPar == moi) end -- pas la tranche d'un autre perso
   local courant = d.projets[d.courant or 0]
-  local projets = { courant and courant.tenu and courant or nil }
-  for _, p in ipairs(d.projets) do if p.tenu and p ~= courant then projets[#projets + 1] = p end end
+  local projets = { mien(courant) and courant or nil }
+  for _, p in ipairs(d.projets) do if mien(p) and p ~= courant then projets[#projets + 1] = p end end
   local premiere, ailleurs
   for _, p in ipairs(projets) do
     for _, f in ipairs(aFabriquer(ns.projetArbre(p, nil, ns.apportsHandshake(p)))) do
