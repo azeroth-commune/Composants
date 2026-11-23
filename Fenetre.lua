@@ -687,13 +687,15 @@ function ns.barreCommandes(frame, button, input, label, orderName, needsB)
   local poL = label("po", tip, 4)
   local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   hint:SetPoint("LEFT", poL, "RIGHT", 12, 0)
-  -- Ce qui sert rarement (importer une liste reçue, l'envoyer en clair) : dans le menu « Plus », pas en boutons.
+  -- Ce qui sert rarement (importer une liste reçue, l'envoyer en clair, l'annoncer dans le Commerce) : dans le menu « Plus »,
+  -- pas en boutons.
   local plusB = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
   plusB:SetWidth(80)
   plusB:OverrideText("Plus")
   plusB:SetupMenu(function(_, root)
     root:CreateButton("Importer une liste reçue", function() hs.Importer() end)
     root:CreateButton("Envoyer la commande en clair", function() hs.EnClair(projet(), laCommande()) end)
+    root:CreateButton("Annoncer dans le Commerce", function() hs.Annoncer(projet(), laCommande()) end)
   end)
   plusB:SetPoint("RIGHT", needsB, "LEFT", -6, 0)
   local contractB = button("Préparer la demande", 150, function()
