@@ -1,6 +1,6 @@
 -- Tests d'intégration dans wow-ui-sim (tools/sim.sh test Composants) : Composants chargé avec le socle Azeroth Commune dans
 -- l'interface Forever simulée, avec ou sans Handshake selon les racines du simulateur. Les blocs viennent de la base des
--- recettes du socle (sa réserve, AzerothCommune/RecettesClassic.lua, générée, hors du repo : à copier dans un worktree).
+-- recettes du socle (sa réserve, AzerothCommune/RecettesReserve.lua, générée, hors du repo : à copier dans un worktree).
 local function tous(f, ok, out)
     out = out or {}
     for _, c in ipairs({ f:GetChildren() }) do
@@ -76,7 +76,7 @@ test("projet de démo : l'arbre et ses blocs, le menu « Projets » passe d'un p
     SlashCmdList.COMPOSANTS("demo ceinture")
     assertTrue(ComposantsFrame:IsShown())
     assertTrue(affiche("Essai : ceintures multi-métiers"))
-    assertTrue(#cases() > 5, "l'arbre dessiné (AzerothCommune/RecettesClassic.lua présent ?)")
+    assertTrue(#cases() > 5, "l'arbre dessiné (AzerothCommune/RecettesReserve.lua présent ?)")
     local etapes = tous(ComposantsFrame, function(c) return c.grp ~= nil and c:IsShown() end)
     assertTrue(#etapes > 1, "des blocs, un par métier")
     SlashCmdList.COMPOSANTS("demo set")
