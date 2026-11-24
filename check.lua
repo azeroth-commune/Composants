@@ -392,17 +392,10 @@ end
 commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
 print("Composants : dessin de l'arbre (étages, relais, bandes) OK")
 
--- Suggestions : la recherche d'objets du socle (AzerothCommune#49), pas d'index d'objets à Composants ; mêmes objets,
--- même ordre (fabricables d'abord, puis début de nom, puis noms courts).
-assert(ns.chercherObjets == commune.ChercherObjets, "la recherche du socle")
-local fen = io.open("Composants/Fenetre.lua"):read("*a") .. io.open("Composants/Recherche.lua"):read("*a")
-assert(not fen:find("itemIndex", 1, true) and not fen:find("low:find", 1, true), "plus de recherche à soi dans la fenêtre")
-AzerothCommuneItems.items = { [1] = { name = "Barre de bronze" }, [2] = { name = "Bronze" }, [3] = { name = "Lame en bronze" }, [4] = { name = "Fer" } }
-AzerothCommuneDB.recipes = { [9] = { name = "Lame en bronze", output = 3 }, [8] = { name = "Cuirasse changeante", output = 210794 } }
-local sug = ns.chercherObjets("bron", 8)
-assert(#sug == 3 and sug[1].id == 3 and sug[2].id == 2 and sug[3].id == 1 and sug[1].fabricable, "ordre des suggestions")
-assert(ns.chercherObjets("chang", 8)[1].id == 210794, "recette dont l'objet n'a pas de nom")
-assert(#ns.chercherObjets("b", 8) == 0, "au moins 2 lettres")
+-- Suggestions : la barre de recherche du socle (AzerothCommune#60), plus de copie ni d'index d'objets à Composants.
+local fen = io.open("Composants/Fenetre.lua"):read("*a")
+assert(fen:find("AzerothCommune.RechercheObjets(", 1, true) and not io.open("Composants/Recherche.lua"), "la barre du socle")
+assert(not fen:find("itemIndex", 1, true) and not fen:find("low:find", 1, true) and ns.rechercheObjets == nil, "plus de recherche à soi")
 print("Composants : suggestions OK")
 
 

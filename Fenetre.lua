@@ -664,8 +664,9 @@ local function track(id, qty)
   refresh()
 end
 
--- La barre de recherche (Recherche.lua) : l'objet choisi entre dans le projet affiché.
-local function searchBox(qty) return ns.rechercheObjets(frame, qty, track) end
+-- La barre de recherche du socle (AzerothCommune#60 ; Composants souscrit aux deux types qu'elle lit) : l'objet choisi entre
+-- dans le projet affiché.
+local function searchBox(qty) return AzerothCommune.RechercheObjets(frame, qty, track) end
 
 -- La barre des commandes, quand Handshake est chargé (reprise telle quelle de Handshake, son repensage est Handshake#20) :
 -- l'artisan et l'offre de la commande choisie, la liste des commandes du projet avec leur état (lu dans leur contrat par
