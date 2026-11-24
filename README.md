@@ -27,7 +27,6 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 | `Donnees.lua` | accès au socle (recettes, inventaires, métiers, HV, noms d'objets), `ComposantsDB` |
 | `Calcul.lua` | « acheter ou fabriquer » : le plan le moins cher d'un objet, choix entre recettes équivalentes, boucles écartées |
 | `Projet.lua` | les projets (identité stable, lignes, choix de case, projet tenu, signal de changement), le Brouillon, les cases, les blocs, l'arbre |
-| `Recherche.lua` | la barre de recherche d'objets (sur `AzerothCommune.ChercherObjets`) |
 | `Fenetre.lua` | la fenêtre des projets, son dessin ; la barre des commandes de Handshake quand il est là ; Ctrl+clic droit ; `/composants` |
 | `Fabriquer.lua` | le bouton « Fabriquer » sous la fenêtre de métier : la prochaine fabrication des projets tenus |
 | `Infobulle.lua` | les lignes « Utilisé dans » / « Fabriqué par » dans l'infobulle des objets |

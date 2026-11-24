@@ -80,8 +80,6 @@ ns.money, ns.moneyShort, ns.moneySigned, ns.newWindow = lib.Argent, lib.ArgentCo
 function ns.rememberItem(id) return lib.RetenirObjet(id, nomsDeSession) end
 function ns.itemLabel(id) return lib.NomObjet(id, ns.items(), nomsDeSession) end
 function ns.findItem(text) return lib.TrouverObjet(text, ns.items(), ns.recipes()) end
--- Suggestions de la barre de recherche : la recherche d'objets du socle (Composants souscrit aux deux types qu'elle lit).
-ns.chercherObjets = lib.ChercherObjets
 
 -- ComposantsDB : { projets, projetSeq, courant, brouillon (Projet.lua), besoins et recolte (Besoins.lua), options (de calcul),
 --   minimap_angle (le socle) }.
