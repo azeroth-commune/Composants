@@ -23,11 +23,11 @@ local function aucunReleve(quand)
   for _, k in ipairs(RELEVES) do assert((ComposantsDB or {})[k] == nil, quand .. " : relevé « " .. k .. " » écrit dans ComposantsDB") end
 end
 -- Le socle (dépôt voisin, chargé avant Composants comme dans le jeu), fichiers dans l'ordre de sa TOC avec son espace de
--- noms privé. ponytail: ses fichiers générés (VendorData, RecettesClassic, CatalogueObjets, hors du repo) sont sautés : les
--- marchands et la réserve des recettes sont ceux du test (acns.recettesClassic).
+-- noms privé. ponytail: ses fichiers générés (VendorData, RecettesReserve, CatalogueObjets, hors du repo) sont sautés : les
+-- marchands et la réserve des recettes sont ceux du test (acns.recettesReserve).
 local acns = {}
 for f in io.open("AzerothCommune/AzerothCommune.toc"):read("*a"):gmatch("([%w_]+)%.lua") do
-  if f ~= "VendorData" and f ~= "RecettesClassic" and f ~= "CatalogueObjets" then assert(loadfile("AzerothCommune/" .. f .. ".lua"))("AzerothCommune", acns) end
+  if f ~= "VendorData" and f ~= "RecettesReserve" and f ~= "CatalogueObjets" then assert(loadfile("AzerothCommune/" .. f .. ".lua"))("AzerothCommune", acns) end
 end
 local ns = {}
 local TOC = io.open("Composants/Composants.toc"):read("*a")
@@ -481,10 +481,10 @@ assert(arbreSeul.caseDe.I2770.cost == 5 * 30 and ns.texteHV() == "prix de l'HV :
 Auctionator = nil
 aucunReleve("catalogue pas encore relevé, fournisseur")
 -- Base des recettes du socle (AzerothCommune#48) : Composants y souscrit et la lit par Lire. La réserve
--- Classic est celle du socle (privée : acns.recettesClassic), ajoutée pour les objets sans recette vue, jamais par-dessus
+-- Classic est celle du socle (privée : acns.recettesReserve), ajoutée pour les objets sans recette vue, jamais par-dessus
 -- une recette vue du même objet.
 assert(AzerothCommuneDB.souscriptions["base des recettes"], "Composants souscrit à la base des recettes")
-acns.recettesClassic = { [9001] = { 2840, 1, 1, "Minage", "Barre de cuivre (Classic)", { 2770, 2 }, 1 },
+acns.recettesReserve = { [9001] = { 2840, 1, 1, "Minage", "Barre de cuivre (Classic)", { 2770, 2 }, 1 },
   [9002] = { 4255, 1, 1, "Travail du cuir", "Armure verte en cuir", { 4234, 9 }, 175 },
   [5] = { 2840, 1, 1, "Minage", "Fonte du cuivre", { 2770, 1 }, 25 } }
 local merged = ns.recipes()
@@ -496,7 +496,7 @@ local verte = ns.projetArbre(ns.nouveauProjet({ lines = { { id = 4255, qty = 1 }
 local niveaux = {}
 for _, g in ipairs(verte.blocs) do for _, r in ipairs(g.recipes) do niveaux[r.key] = r.level end end
 assert(niveaux[9002] == 175 and niveaux[5] == 25, "compétence requise de la réserve : " .. tostring(niveaux[9002]) .. ", " .. tostring(niveaux[5]))
-acns.recettesClassic = nil
+acns.recettesReserve = nil
 local demo = ns.demoProjet("hasard")
 assert(demo.name == "Essai : au hasard" and #demo.lines == 1 and demo.lines[1].id == 2841, "essai : le bronze (son cuivre se fabrique)")
 assert(#ns.demoProjet().lines == 3 and ns.demoProjet("ceinture").lines[1].id == 10721, "essais choisis : le set, les ceintures")

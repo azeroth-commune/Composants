@@ -10,7 +10,7 @@ test("Fabriquer : le bouton sous la fenêtre de métier lance la prochaine fabri
     if not ProfessionsFrame then C_AddOns.LoadAddOn("Blizzard_Professions") end
     assertNotNil(ProfessionsFrame, "la fenêtre de métier du jeu")
     local recette = AzerothCommune:Lire("base des recettes")[2657] -- Fonte du cuivre (réserve du socle)
-    assertNotNil(recette, "la réserve des recettes (AzerothCommune/RecettesClassic.lua) présente")
+    assertNotNil(recette, "la réserve des recettes (AzerothCommune/RecettesReserve.lua) présente")
     local T, garde, lance = C_TradeSkillUI, {}, {}
     local faux = {
         GetBaseProfessionInfo = function() return { professionName = recette.profession, skillLevel = 1, maxSkillLevel = 75 } end,
