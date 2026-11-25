@@ -476,7 +476,9 @@ local function refresh()
         res.rapporte and "rapporte " .. ns.moneySigned(res.rapporte) or "|cffe64d4dcoût incomplet|r") or ""
       header(1, 0, (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost .. v)
     end
-    for c = 1, g.cols - 1 do header(c + 1, spacing * c, "Étage " .. c) end
+    -- Un « Étage » que la ligne du projet recouvrirait est sauté (la case de l'étape dit déjà où l'on est).
+    local libre = headers[1]:GetStringWidth() + 24
+    for c = 1, g.cols - 1 do if spacing * c >= libre then header(c + 1, spacing * c, "Étage " .. c) end end
   end
 
   local x = function(n) return MARGIN + n.col * spacing end
