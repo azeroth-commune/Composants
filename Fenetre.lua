@@ -113,6 +113,7 @@ local function newOrderTag()
   t:SetFrameLevel(content:GetFrameLevel() + 5)
   t.text = t:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   t.text:SetPoint("CENTER")
+  t.text:SetWordWrap(false) -- tronquée au bord du dessin (plus bas), la bulle dit tout
   t:SetScript("OnEnter", function(self)
     local o = self.order
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -674,7 +675,8 @@ local function refresh()
     header(1, 0, ns.estBrouillon(projet()) and "|cff999999Brouillon vide : Ctrl+clic droit sur un objet n'importe où l'y met ; Lancer en fait un projet.|r"
       or "|cff999999Cherche un objet (ou dépose-le sur la recherche) ; Ctrl+clic droit sur un objet le met au Brouillon.|r")
   else
-    local o, cost = projet(), ns.moneyShort(total) .. (incomplete and " |cffe64d4d+ ?|r" or "")
+    local o = projet()
+    local cost = (total == 0 and not incomplete) and "rien à acheter" or (ns.moneyShort(total) .. (incomplete and " |cffe64d4d+ ?|r" or ""))
     local fini = ns.phase(o) == "fini" and " · |cff59cc73Tout est fabriqué|r" or "" -- la phase Fini
     -- Valeur à l'HV de ce qu'on fabrique, et ce que ça rapporte quand le coût est complet ; rien sans prix.
     local v = res.valeur and (" · vaut %s à l'HV · %s"):format(ns.moneyShort(res.valeur),
@@ -851,6 +853,7 @@ local function refresh()
       orderTags[usedTags] = t
       t.order = o
       local first = o.lines[1]
+      t.text:SetWidth(0)
       t.text:SetText(("pour %s · %d× %s%s"):format(bandName(o.client), o.qty[first], ns.itemLabel(first),
         #o.lines > 1 and (" +" .. (#o.lines - 1)) or ""))
       t:SetSize(t.text:GetStringWidth() + 12, 16)
@@ -860,6 +863,13 @@ local function refresh()
       t:SetPoint("LEFT", shelf[b] or (b.zone:IsShown() and b.zone or b.name), "RIGHT", 6, 0)
       shelf[b] = t
       t:Show()
+      -- Jamais au-delà du bord droit visible (en unités du dessin) : tronquée, cachée s'il reste moins de 40.
+      local l, cl = t:GetLeft(), content:GetLeft()
+      local place = l and cl and scroll:GetWidth() / content:GetScale() - view.x - 4 - (l - cl)
+      if place and t:GetWidth() > place then
+        t:SetWidth(math.max(40, place)); t.text:SetWidth(math.max(40, place) - 12)
+        t:SetShown(place >= 40)
+      end
     end
   end
   for i = usedTags + 1, #orderTags do orderTags[i]:Hide() end

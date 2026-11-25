@@ -81,6 +81,7 @@ test("le bouton d'action : la prochaine fabrication, une ou tout, sa fenêtre, l
         assertTrue(b:IsVisible() and enBas(b), "visible, en bas de la grande vue")
         assertTrue(cerclee(barre), "la case de la prochaine fabrication se distingue : cerclée")
         local content, scroll = barre:GetParent(), barre:GetParent():GetParent()
+        assertNotNil(ligne(content, "^Projet · rien à acheter"), "le minerai en sac : « rien à acheter », pas « 0 »")
         assertTrue(ComposantsFrame.status:GetBottom() - ComposantsFrame:GetBottom() < 20, "la barre d'état en bas")
         assertTrue(ComposantsFrame.status:GetRight() <= b:GetLeft(), "la barre d'état ne passe pas sous le bouton")
         -- Aucune fenêtre de métier : le bouton le dit, sa macro ouvre le Minage.

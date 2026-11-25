@@ -121,6 +121,13 @@ test("projet de démo : l'arbre et ses blocs, la colonne passe d'un projet à l'
     assertTrue(#etapes > 1, "des blocs, un par métier")
     SlashCmdList.COMPOSANTS("demo set")
     assertTrue(affiche("Essai : set en thorium enchanté"))
+    -- Les étiquettes des livraisons (« pour Forge · 84× … ») ne dépassent pas le bord droit visible du dessin.
+    local tags = tous(ComposantsFrame, function(c) return c.order ~= nil and c:IsShown() end)
+    assertTrue(#tags > 0, "des livraisons entre métiers")
+    for _, t in ipairs(tags) do
+        local zone = t:GetParent():GetParent()
+        assertTrue(t:GetRight() * t:GetEffectiveScale() <= zone:GetRight() * zone:GetEffectiveScale() + 1, "étiquette au-delà du bord : " .. t.text:GetText())
+    end
     assertNil(deroulant("Projets"), "plus de menu « Projets »")
     ouvrir("Essai : ceintures multi-métiers")
     assertTrue(affiche("Essai : ceintures multi-métiers"))
