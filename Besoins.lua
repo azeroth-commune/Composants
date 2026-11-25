@@ -2,28 +2,33 @@
 -- phase Réunir ; une petite fenêtre verticale, qui prend le coin de la grande (ns.montrerVue, Fenetre.lua), le fil en haut.
 -- Chaque projet a ses Besoins et compte le stock comme s'il était seul. Une ligne avance quand l'objet arrive dans les sacs ;
 -- ce qui est à la banque ou chez un autre perso dit où le trouver, sans compter comme réuni ; coche verte quand tout est
--- dans les sacs. Tout réuni : le projet passe tout seul en Fabriquer et la grande vue revient. En dessous, ce qu'apportent
--- les autres (les cases fournies, l'emplacement du bloc), puis les recettes pas encore apprises. HV ouvert : clic sur une ligne = la
--- chercher à l'HV. Une ligne qui manque encore porte sa bascule « Achat » / « Récolte » ; ce qui reste à acheter devient, à
--- chaque ouverture de l'HV, la liste d'achats d'Auctionator « Besoins (Composants) » (#18), celle du projet affiché.
+-- dans les sacs. Tout réuni (et tout ce que le fournisseur de l'emplacement attend, arrivé) : le projet passe tout seul en
+-- Fabriquer et la grande vue revient. Un bloc confié n'y est pas (ses cases et ce qui n'est fabriqué que pour lui), sauf ce
+-- que le joueur lui donne, une ligne comme les autres. En dessous, les lignes du fournisseur (l'emplacement des Besoins),
+-- puis les recettes pas encore apprises. HV ouvert : clic sur une ligne = la chercher à l'HV. Une ligne qui manque encore
+-- porte sa bascule « Achat » / « Récolte » ; ce qui reste à acheter devient, à chaque ouverture de l'HV, la liste d'achats
+-- d'Auctionator « Besoins (Composants) » (#18), celle du projet affiché.
 local _, ns = ...
 
 -- L'arbre des Besoins de p : options du calcul (réglages, ou opts), les cases fournies (l'emplacement du bloc) ; les sacs, la banque et les
 -- autres persos y comptent toujours, options décochées ou non (réunir, c'est les avoir dans les sacs ; la banque et les
--- autres persos disent où les trouver, plutôt que « à acheter »).
+-- autres persos disent où les trouver, plutôt que « à acheter »). res.horsBesoins = la part confiée (ns.partConfiee) :
+-- ni dans les Besoins, ni dans ce qu'il reste à acheter.
 function ns.besoinsArbre(p, opts)
   local o = {}
   for k, v in pairs(opts or ns.db().options) do o[k] = v end
   o.bags, o.bank, o.alts = true, true, true
-  return ns.projetArbre(p, o, ns.apportsEmplacement(p))
+  local res = ns.projetArbre(p, o, ns.apportsEmplacement(p))
+  res.horsBesoins = ns.partConfiee(p, res)
+  return res
 end
 
--- Réuni (Phase, CONTEXT.md) : chaque ligne des Besoins est dans les sacs (la banque et les autres persos ne comptent pas)
--- et aucune recette n'est à apprendre (il faut l'avoir pour fabriquer, comme les composants).
--- C'est la condition de Réunir → Fabriquer (ns.avancerPhase, Projet.lua). ponytail: ce que le fournisseur de l'emplacement
--- attend encore s'y ajoutera ici (Composants#27).
+-- Réuni (Phase, CONTEXT.md) : chaque ligne des Besoins est dans les sacs (la banque et les autres persos ne comptent pas),
+-- aucune recette n'est à apprendre (il faut l'avoir pour fabriquer, comme les composants) et ce que le fournisseur de
+-- l'emplacement a pris en charge est arrivé (ns.closEmplacement). C'est la condition de Réunir → Fabriquer
+-- (ns.avancerPhase, Projet.lua).
 local function reuni(p, res)
-  if #p.lines == 0 then return false end
+  if #p.lines == 0 or not ns.closEmplacement(p) then return false end
   local rows, recettes = ns.orderNeeds(res)
   if #recettes > 0 then return false end
   for _, r in ipairs(rows) do if r.have[1] < r.required then return false end end
@@ -113,13 +118,15 @@ function ns.recipeItem(name)
 end
 
 -- La liste des besoins : ce qui ne se fabrique pas dans l'arbre (acheté ou déjà en stock, même la part en stock d'une case
--- en partie fabriquée ; pas ce qu'une commande apporte), avec combien il en faut et combien on en a, une ligne par objet
--- (ligne du projet et composant d'une autre additionnés) ; puis les recettes pas apprises, une fois chacune.
+-- en partie fabriquée ; ni une case fournie par un autre, ni la part confiée, res.horsBesoins), avec combien il en faut et
+-- combien on en a, une ligne par objet (ligne du projet et composant d'une autre additionnés) ; puis les recettes pas
+-- apprises, une fois chacune.
 function ns.orderNeeds(res)
   local rows, recipes, rowOf, seen = {}, {}, {}, {}
+  local hors = res.horsBesoins or {}
   for _, n in ipairs(res.cases) do
     local required = n.qty - n.made
-    if required > 0 and (n.apport or 0) == 0 then
+    if required > 0 and (n.apport or 0) == 0 and not hors[n] then
       local r = rowOf[n.id]
       if not r then
         r = { id = n.id, required = 0, have = { 0, 0, 0 }, need = 0, cost = 0 }
@@ -129,7 +136,7 @@ function ns.orderNeeds(res)
       for i = 1, 3 do r.have[i] = r.have[i] + n.have[i] end
       r.unpriced, r.how = r.unpriced or n.unpriced, n.how or r.how
     end
-    if n.made > 0 and n.unknown and n.recipe and not seen[n.recipe.name] then
+    if n.made > 0 and n.unknown and n.recipe and not seen[n.recipe.name] and not hors[n] then
       seen[n.recipe.name] = true
       recipes[#recipes + 1] = { name = n.recipe.name, item = ns.recipeItem(n.recipe.name), product = n.id }
     end
@@ -327,20 +334,14 @@ function ns.refreshNeeds()
     if manque then bascule(recolte) end
   end
   if #list == 0 then title("|cff999999Rien à réunir : tout se fabriquera avec ce que tu as.|r") end
-  local brought = {}
-  for _, n in ipairs(res.cases) do
-    if (n.apport or 0) > 0 then brought[#brought + 1] = { id = n.id, qty = n.apport } end
-  end
-  table.sort(brought, function(a, b) return a.id < b.id end)
-  if #brought > 0 then
-    frame.y = frame.y + 6
-    title("Tu apportes")
-    for _, a in ipairs(brought) do
-      local have = C_Item.GetItemCount and C_Item.GetItemCount(a.id) or 0
-      line(C_Item.GetItemIconByID(a.id), ns.itemLabel(a.id), have >= a.qty and (READY .. " " .. a.qty) or ("%d/%d"):format(have, a.qty),
-        a.id, "Dans tes sacs : " .. have, { math.min(have, a.qty), 0, 0 }, a.qty, { 0.30, 0.80, 0.85 })
-    end
-  end
+  -- L'emplacement des Besoins : une zone de la largeur d'une ligne, sous elles ; le fournisseur y dessine et rend la hauteur.
+  frame.zone:ClearAllPoints()
+  frame.zone:SetPoint("TOPLEFT", 14, -(frame.y + 6))
+  frame.zone:SetHeight(1)
+  frame.zone:Show()
+  local h = tonumber((ns.demander(p, "besoins", frame.zone, p))) or 0
+  frame.zone:SetShown(h > 0)
+  if h > 0 then frame.zone:SetHeight(h); frame.y = frame.y + 6 + h end
 
   if #recipes > 0 then
     frame.y = frame.y + 6
@@ -379,6 +380,9 @@ local function build()
   frame.contenu = CreateFrame("Frame", nil, frame.scroll)
   frame.contenu:SetSize(LARGE + 14, 1)
   frame.scroll:SetScrollChild(frame.contenu)
+  frame.zone = CreateFrame("Frame", nil, frame.contenu) -- l'emplacement des Besoins (API.lua)
+  frame.zone:SetWidth(LARGE)
+  frame.zone.emplacement = true
   local pending
   frame:RegisterEvent("BAG_UPDATE_DELAYED")
   frame:SetScript("OnEvent", function()

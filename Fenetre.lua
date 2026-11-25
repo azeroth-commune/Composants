@@ -37,19 +37,49 @@ local function appel(fn, ...)
   if ok then return r end
   geterrorhandler()(r)
 end
--- Le bloc (nil = le projet entier) est-il confié ?
-local function confie(p, bloc)
+-- Demander au fournisseur (s'il est là pour p et a ce champ) : f[quoi](...) ; nil sans lui.
+function ns.demander(p, quoi, ...)
   local f = F(p)
-  return f and f.confie and appel(f.confie, p, bloc) and true or false
+  if f and f[quoi] then return appel(f[quoi], ...) end
+end
+-- Le bloc (nil = le projet entier) est-il confié ?
+local function confie(p, bloc) return ns.demander(p, "confie", p, bloc) and true or false end
+-- Les blocs confiés de p, sur son arbre res : entier = le projet entier l'est ; confies = { [métier] = true }.
+function ns.confies(p, res)
+  local entier, confies = #res.roots > 0 and confie(p, nil), {}
+  for _, grp in ipairs(res.blocs) do confies[grp.key] = confie(p, grp) or nil end
+  return entier, confies
+end
+-- La part confiée (Besoins.lua) : les cases que le joueur n'a pas à réunir, { [case] = true } — tout l'arbre quand le
+-- projet entier est confié, sinon les cases des blocs confiés et ce qui n'est fabriqué que pour eux (ns.reduire) ; sauf
+-- ce que le joueur leur donne lui-même (aDonner), qui reste à réunir.
+function ns.partConfiee(p, res)
+  local entier, confies = ns.confies(p, res)
+  local part = {}
+  if entier then for _, n in ipairs(res.cases) do part[n] = true end
+  else part = select(3, ns.reduire(res, confies)) end
+  local donne = ns.demander(p, "aDonner", p) or {}
+  -- Ce que le joueur donne, et ce qu'il lui faut pour le faire lui-même (sa case entière) : à réunir, comme les autres.
+  local function rendre(n)
+    if not part[n] then return end
+    part[n] = nil
+    for _, k in ipairs(n.children or {}) do rendre(k) end
+  end
+  for n in pairs(part) do if donne[n.id] then rendre(n) end end
+  return part
+end
+-- Tout ce que le fournisseur a pris en charge pour p est-il arrivé ? Vrai sans lui (ou sans ce champ) ; une erreur chez
+-- lui (signalée) : non.
+function ns.closEmplacement(p)
+  local f = F(p)
+  if not (f and f.clos) then return true end
+  return appel(f.clos, p) and true or false
 end
 -- Le projet affiché ; déclaré ici, avant toute fonction qui l'appelle (déclaré plus bas, une bulle d'étiquette de commande
 -- appelait un « projet » global inexistant).
 local function projet() return ns.projetCourant() end
 -- Les cases que le fournisseur dit fournies par un autre (nil sans lui) : elles sortent de l'arbre.
-function ns.apportsEmplacement(p)
-  local f = F(p)
-  return f and f.apports and appel(f.apports, p) or nil
-end
+function ns.apportsEmplacement(p) return ns.demander(p, "apports", p) end
 -- Vue du dessin : zoom (× l'échelle qui fait tout tenir en largeur) et décalage, en unités du dessin.
 local view = { zoom = 1, x = 0, y = 0, fit = 1 }
 local function applyView()
@@ -221,9 +251,12 @@ end
 -- Un bloc confié : sa case la plus haute (une ligne du projet, sinon ce qu'il livre à un autre bloc) le représente ; ses
 -- autres cases s'y fondent, et ce qui n'est pas fabriqué sous lui (la part de l'artisan) sort du dessin, sauf ce qu'un autre
 -- y prend aussi. Les liens passent par elle, un seul par paire de cases, sans quantité quand plusieurs s'y fondent.
--- Rend les cases et les liens à dessiner (les mêmes tables quand rien n'est confié).
+-- Rend les cases et les liens à dessiner (les mêmes tables quand rien n'est confié), et la part confiée : { [case] = true }
+-- pour les cases des blocs confiés et ce qui sort du dessin avec eux (ns.partConfiee, les Besoins).
+-- ponytail: une matière prise à la fois par un bloc confié et par un autre reste entière (la part de l'artisan n'en est
+-- pas retranchée) ; à compter lien par lien si ça gêne.
 function ns.reduire(res, confies)
-  if not (confies and next(confies)) then return res.cases, res.liens end
+  if not (confies and next(confies)) then return res.cases, res.liens, {} end
   local bloc, rep = {}, {}
   for _, grp in ipairs(res.blocs) do
     for _, n in ipairs(grp.cases) do bloc[n] = grp.key end
@@ -249,8 +282,11 @@ function ns.reduire(res, confies)
       for _, e in ipairs(res.liens) do if e.to == n and bande(e.from, 0) ~= b then vers[n] = n end end
     end
   end
-  local list, edges, vu = {}, {}, {}
-  for _, n in ipairs(res.cases) do if vers[n] == n then list[#list + 1] = n end end
+  local list, edges, vu, part = {}, {}, {}, {}
+  for _, n in ipairs(res.cases) do
+    if vers[n] == n then list[#list + 1] = n end
+    if vers[n] ~= n or rep[bloc[n]] == n then part[n] = true end
+  end
   for _, e in ipairs(res.liens) do
     local f, t = vers[e.from], vers[e.to]
     local k = f and t and f ~= t and (f.key .. ">" .. t.key)
@@ -260,7 +296,7 @@ function ns.reduire(res, confies)
         qty = (f == e.from and t == e.to) and e.qty or nil }
     end
   end
-  return list, edges
+  return list, edges, part
 end
 
 function ns.dessinArbre(res, confies)
@@ -604,8 +640,7 @@ local function refresh()
   ns.avancerPhase(projet(), res) -- Fabriquer → Fini, tout seul
   -- L'emplacement du bloc : les blocs confiés, chacun réduit à une case ; le projet entier confié, une seule case en tout.
   local p, f = projet(), F(projet())
-  local entier, confies = #res.roots > 0 and confie(p, nil), {}
-  for _, grp in ipairs(res.blocs) do confies[grp.key] = confie(p, grp) or nil end
+  local entier, confies = ns.confies(p, res)
   local g = ns.dessinArbre(entier and { cases = {}, liens = {}, blocs = {}, livraisons = {}, caseDe = {} } or res, confies)
   if entier then g.height = NODE_H end
   local roots, market, total, incomplete = res.roots, res.market, res.total, res.incomplete

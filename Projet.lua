@@ -92,13 +92,14 @@ function ns.allerPhase(p, phase)
 end
 
 -- Ce qui se fait tout seul : Réunir → Fabriquer quand tout est réuni (ns.toutReuni, Besoins.lua), Fabriquer → Fini quand il
--- n'y a plus rien à fabriquer (ns.projetFini, Fabriquer.lua ; res = l'arbre du projet s'il est déjà calculé). Rend true si
--- la phase a changé.
+-- n'y a plus rien à fabriquer (ns.projetFini, Fabriquer.lua ; res = l'arbre du projet s'il est déjà calculé) ; les deux
+-- attendent aussi ce que le fournisseur de l'emplacement a pris en charge (ns.closEmplacement). Rend true si la phase a
+-- changé.
 function ns.avancerPhase(p, res)
   if ns.estBrouillon(p) then return false end
   local avant = ns.phase(p)
   if avant == "reunir" and ns.toutReuni(p) then ns.projetPhase(p, "fabriquer") end
-  if ns.phase(p) == "fabriquer" and ns.projetFini(res or ns.projetArbre(p, nil, ns.apportsEmplacement(p))) then
+  if ns.phase(p) == "fabriquer" and ns.closEmplacement(p) and ns.projetFini(res or ns.projetArbre(p, nil, ns.apportsEmplacement(p))) then
     ns.projetPhase(p, "fini")
   end
   return ns.phase(p) ~= avant

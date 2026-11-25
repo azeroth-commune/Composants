@@ -7,8 +7,10 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
   autres persos, prix de l'HV et des marchands) sont lues par lui.
 - **Seul**, Composants ne montre rien qui concerne un autre joueur (ni contrat, ni artisan d'en face) et ne connaît pas
   Handshake. Il offre l'**emplacement du bloc** (`Composants.Emplacements`, plus bas) : un autre add-on y dessine dans
-  chaque bloc de l'arbre et sur la ligne du projet, et un bloc qu'il dit confié se réduit à une seule case. Handshake s'y
-  branche quand il est là (« Commander » un bloc, la case « Contrat n°12 · artisan · état », son panneau).
+  chaque bloc de l'arbre et sur la ligne du projet, et un bloc qu'il dit confié se réduit à une seule case ; dans les
+  Besoins, il ajoute ses lignes, et Réunir → Fabriquer et Fini attendent qu'il dise ce qu'il a pris en charge arrivé. Un
+  bloc confié sort des Besoins, sauf ce que le joueur lui donne. Handshake s'y branche quand il est là (« Commander » un
+  bloc, la case « Contrat n°12 · artisan · état », son panneau ; « Contrat n°12 · à recevoir » dans les Besoins).
 - **Pour le joueur** : `/composants` (ou `/compo`) ouvre la fenêtre ; `/composants <objet> [quantité] [tout]` l'ajoute au
   projet affiché ; `/composants demo [set|ceinture|hasard]` crée un projet d'essai ; Ctrl+clic droit sur un objet
   n'importe où le met au Brouillon (en tête de la colonne des projets ; « Lancer » en fait un projet, clic droit « Vider le
@@ -21,7 +23,7 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
   d'action qui suit la phase. Pas de légende : la bulle de chaque case dit d'où vient l'objet.
 - **Phases** : un projet va de Préparer (l'arbre, les choix de case ; « Lancer ») à Réunir (ses Besoins seuls, dans la
   petite fenêtre qui prend le coin de la grande), puis Fabriquer tout seul quand tout est dans les sacs (la banque et les
-  autres persos disent où le trouver), puis Fini quand plus rien n'est à fabriquer (gardé ; « Clore » le supprime). Une
+  autres persos disent où le trouver) et ce que l'emplacement attend arrivé, puis Fini quand plus rien n'est à fabriquer (gardé ; « Clore » le supprime). Une
   seule vue à la fois ; le fil « Préparer › Réunir › Fabriquer » en haut des deux montre la phase et y va d'un clic. Changer
   une ligne ou un choix de case remet le projet en Préparer.
 - **Fabriquer** : l'arbre en lecture seule (ni « + », ni quantités, ni choix de case : « Préparer » dans le fil pour
@@ -46,7 +48,7 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 | `Fenetre.lua` | la grande vue (Préparer, Fabriquer, Fini) : la colonne des projets, le nom et le fil, la ligne d'ajout, l'arbre (un bloc confié réduit à une case), le bouton d'action (Lancer, Clore) ; la vue de la phase ; les zones de l'emplacement du bloc ; les options du calcul dans les réglages du socle ; Ctrl+clic droit ; `/composants` |
 | `Fabriquer.lua` | la prochaine fabrication du projet affiché : le bouton d'action en Fabriquer, sa case cerclée |
 | `Infobulle.lua` | les lignes « Utilisé dans » / « Fabriqué par » dans l'infobulle des objets |
-| `Besoins.lua` | les Besoins du projet affiché (Réunir) : réuni = dans les sacs ; leur fenêtre, la bascule « Achat » / « Récolte », la liste d'achats d'Auctionator |
+| `Besoins.lua` | les Besoins du projet affiché (Réunir) : réuni = dans les sacs (sans la part confiée) ; leur fenêtre, l'emplacement des Besoins, la bascule « Achat » / « Récolte », la liste d'achats d'Auctionator |
 | `API.lua` | le global `Composants` |
 
 ## API publique
@@ -98,6 +100,11 @@ local avant = C.Emplacements({
                                                --   confié, la case du bloc (190 × 42) ; sinon une bande haute de 16 sur
                                                --   sa ligne de titre (le projet : la ligne d'en-tête), dont on règle la largeur
   apports = function(p) return { [itemID] = true } end, -- les cases fournies par un autre : elles sortent de l'arbre
+  -- L'emplacement des Besoins (facultatif) : un bloc confié sort des Besoins (ses cases et ce qui n'est fabriqué que pour
+  -- lui), sauf ce que le joueur lui donne.
+  besoins = function(zone, p) return hauteur end, -- ses lignes dans zone (sous celles des Besoins, large d'une ligne)
+  clos = function(p) return vrai end,          -- tout ce qu'il a pris en charge est arrivé : Réunir → Fabriquer et Fini l'attendent
+  aDonner = function(p) return { [itemID] = true } end, -- ce que le joueur donne à un bloc confié : des lignes des Besoins
 })
 ```
 

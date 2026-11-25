@@ -52,6 +52,12 @@ Composants = {
   -- les cases fournies par un autre, qui sortent de l'arbre }. bloc = un bloc de Composants.Arbre(p).blocs, ou nil = le
   -- projet entier (sa bande : la ligne d'en-tête de l'arbre). Jamais appelé pour le Brouillon. Un seul fournisseur ;
   -- rend celui d'avant (nil retire le fournisseur).
+  -- L'emplacement des Besoins (CONTEXT.md, Besoins), le même fournisseur, champs facultatifs : besoins = fn(zone, p) →
+  -- hauteur, dessine ses lignes dans zone (un Frame large d'une ligne des Besoins, sous elles) et rend la hauteur prise
+  -- (0 ou nil : rien) ; clos = fn(p) → vrai quand tout ce qu'il a pris en charge pour p est arrivé (Réunir → Fabriquer et
+  -- Fabriquer → Fini l'attendent ; sans clos : vrai) ; aDonner = fn(p) → { [itemID] = true } ou nil, les cases que le
+  -- joueur donne lui-même à un bloc confié : elles restent des lignes de ses Besoins. Un bloc confié sort des Besoins (ses
+  -- cases et ce qui n'est fabriqué que pour lui), sauf ce qu'on lui donne.
   -- ponytail: un seul fournisseur (Handshake) ; une liste le jour où un deuxième add-on veut dessiner dans les blocs.
   Emplacements = function(f)
     local avant = ns.fournisseur
