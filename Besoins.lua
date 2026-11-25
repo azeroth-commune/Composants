@@ -3,25 +3,25 @@
 -- Chaque projet a ses Besoins et compte le stock comme s'il était seul. Une ligne avance quand l'objet arrive dans les sacs ;
 -- ce qui est à la banque ou chez un autre perso dit où le trouver, sans compter comme réuni ; coche verte quand tout est
 -- dans les sacs. Tout réuni : le projet passe tout seul en Fabriquer et la grande vue revient. En dessous, ce qu'apportent
--- les commandes Handshake (quand il est là), puis les recettes pas encore apprises. HV ouvert : clic sur une ligne = la
+-- les autres (les cases fournies, l'emplacement du bloc), puis les recettes pas encore apprises. HV ouvert : clic sur une ligne = la
 -- chercher à l'HV. Une ligne qui manque encore porte sa bascule « Achat » / « Récolte » ; ce qui reste à acheter devient, à
 -- chaque ouverture de l'HV, la liste d'achats d'Auctionator « Besoins (Composants) » (#18), celle du projet affiché.
 local _, ns = ...
 
--- L'arbre des Besoins de p : options du calcul (réglages, ou opts), ses apports Handshake ; les sacs, la banque et les
+-- L'arbre des Besoins de p : options du calcul (réglages, ou opts), les cases fournies (l'emplacement du bloc) ; les sacs, la banque et les
 -- autres persos y comptent toujours, options décochées ou non (réunir, c'est les avoir dans les sacs ; la banque et les
 -- autres persos disent où les trouver, plutôt que « à acheter »).
 function ns.besoinsArbre(p, opts)
   local o = {}
   for k, v in pairs(opts or ns.db().options) do o[k] = v end
   o.bags, o.bank, o.alts = true, true, true
-  return ns.projetArbre(p, o, ns.apportsHandshake(p))
+  return ns.projetArbre(p, o, ns.apportsEmplacement(p))
 end
 
 -- Réuni (Phase, CONTEXT.md) : chaque ligne des Besoins est dans les sacs (la banque et les autres persos ne comptent pas)
 -- et aucune recette n'est à apprendre (il faut l'avoir pour fabriquer, comme les composants).
--- C'est la condition de Réunir → Fabriquer (ns.avancerPhase, Projet.lua). ponytail: les contrats Handshake clos s'y
--- ajouteront ici (Composants#26, #27).
+-- C'est la condition de Réunir → Fabriquer (ns.avancerPhase, Projet.lua). ponytail: ce que le fournisseur de l'emplacement
+-- attend encore s'y ajoutera ici (Composants#27).
 local function reuni(p, res)
   if #p.lines == 0 then return false end
   local rows, recettes = ns.orderNeeds(res)

@@ -5,10 +5,10 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 
 - **Requiert** le socle Azeroth Commune (`## Dependencies: AzerothCommune`) : toutes les données (recettes, sacs, banque,
   autres persos, prix de l'HV et des marchands) sont lues par lui.
-- **Handshake facultatif** (`## OptionalDeps: Handshake`) : Composants sert seul. Quand Handshake est là, la fenêtre des
-  projets montre aussi ses commandes (« Commander » sur un bloc, Ctrl+clic « j'apporte » sur une case, la barre des
-  commandes et leur état) : Composants les dessine lui-même en appelant l'API publique de Handshake (global `Handshake`,
-  voir le README de Handshake). Sans lui, rien de tout ça n'apparaît.
+- **Seul**, Composants ne montre rien qui concerne un autre joueur (ni contrat, ni artisan d'en face) et ne connaît pas
+  Handshake. Il offre l'**emplacement du bloc** (`Composants.Emplacements`, plus bas) : un autre add-on y dessine dans
+  chaque bloc de l'arbre et sur la ligne du projet, et un bloc qu'il dit confié se réduit à une seule case. Handshake s'y
+  branche quand il est là (« Commander » un bloc, la case « Contrat n°12 · artisan · état », son panneau).
 - **Pour le joueur** : `/composants` (ou `/compo`) ouvre la fenêtre ; `/composants <objet> [quantité] [tout]` l'ajoute au
   projet affiché ; `/composants demo [set|ceinture|hasard]` crée un projet d'essai ; Ctrl+clic droit sur un objet
   n'importe où le met au Brouillon (en tête de la colonne des projets ; « Lancer » en fait un projet, clic droit « Vider le
@@ -43,7 +43,7 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 | `Donnees.lua` | accès au socle (recettes, inventaires, métiers, HV, noms d'objets), `ComposantsDB` |
 | `Calcul.lua` | « acheter ou fabriquer » : le plan le moins cher d'un objet, choix entre recettes équivalentes, boucles écartées |
 | `Projet.lua` | les projets (identité stable, lignes, choix de case, projet tenu, phases, signal de changement), le Brouillon et Lancer, les cases, les blocs, l'arbre |
-| `Fenetre.lua` | la grande vue (Préparer, Fabriquer, Fini) : la colonne des projets, le nom et le fil, la ligne d'ajout, l'arbre, le bouton d'action (Lancer, Clore) ; la vue de la phase ; la barre des commandes de Handshake quand il est là ; les options du calcul dans les réglages du socle ; Ctrl+clic droit ; `/composants` |
+| `Fenetre.lua` | la grande vue (Préparer, Fabriquer, Fini) : la colonne des projets, le nom et le fil, la ligne d'ajout, l'arbre (un bloc confié réduit à une case), le bouton d'action (Lancer, Clore) ; la vue de la phase ; les zones de l'emplacement du bloc ; les options du calcul dans les réglages du socle ; Ctrl+clic droit ; `/composants` |
 | `Fabriquer.lua` | la prochaine fabrication du projet affiché : le bouton d'action en Fabriquer, sa case cerclée |
 | `Infobulle.lua` | les lignes « Utilisé dans » / « Fabriqué par » dans l'infobulle des objets |
 | `Besoins.lua` | les Besoins du projet affiché (Réunir) : réuni = dans les sacs ; leur fenêtre, la bascule « Achat » / « Récolte », la liste d'achats d'Auctionator |
@@ -79,7 +79,7 @@ C.Tenir(p, raison, lignes)   -- lignes : les nouvelles (remises à jour à chaqu
 -- "acheter") refuse) ; sans objet produit (un enchantement), seuls ses composants sont des cases. Dessous : libres.
 C.Tenir(p, "Tranche 75 → 90", { { recette = 2659, fois = 5 }, { recette = 7420, fois = 3 } })
 C.Tenir(p, nil)              -- lâché
--- L'arbre et les blocs : p = un projet, ou toute table { lines, choix } (la part d'une commande)
+-- L'arbre et les blocs : p = un projet, ou toute table { lines, choix } (une part du projet)
 local res = C.Arbre(p, sansStock, apports)
 -- sansStock = true : toutes les recettes, aucun stock déduit ; sinon les options du calcul (réglages : sacs, banque…).
 -- apports = { [itemID] = true } facultatif : ces cases (et ce qu'il y a dessous) sortent de l'arbre, n.apport = leur quantité.
@@ -90,6 +90,15 @@ local res = C.Arbre(p, sansStock, apports)
 C.QuandChange(function(p, quoi) end) -- après chaque modification : "nouveau", "lignes", "choix", "nom", "tenu", "phase", "supprime"
 C.Ouvrir(id)                 -- la fenêtre, sur le projet id (ou celui affiché), dans la vue de sa phase
 C.Rafraichir()               -- la redessiner (ce qu'elle montre d'un autre add-on a changé)
+-- L'emplacement du bloc : un autre add-on dessine dans les blocs de la grande vue (jamais sur le Brouillon). Un seul
+-- fournisseur ; rend celui d'avant (nil le retire). bloc = un bloc de C.Arbre(p).blocs, ou nil = le projet entier.
+local avant = C.Emplacements({
+  confie = function(p, bloc) return vrai end,  -- confié : le bloc (nil : tout l'arbre) se réduit à une seule case
+  bloc = function(zone, p, bloc, confie) end,  -- dessiner dans zone, un Frame posé par Composants à chaque dessin :
+                                               --   confié, la case du bloc (190 × 42) ; sinon une bande haute de 16 sur
+                                               --   sa ligne de titre (le projet : la ligne d'en-tête), dont on règle la largeur
+  apports = function(p) return { [itemID] = true } end, -- les cases fournies par un autre : elles sortent de l'arbre
+})
 ```
 
 ## Développement

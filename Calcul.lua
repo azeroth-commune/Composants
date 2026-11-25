@@ -119,7 +119,7 @@ local function composants(rec, crafts, ctx, depth, path)
 end
 
 function plan(id, qty, ctx, depth, path)
-  -- Une case retirée de l'arbre par celui qui le demande (Handshake : un apport de la commande) : elle et tout ce qu'il y
+  -- Une case retirée de l'arbre par celui qui le demande (un apport, l'emplacement du bloc) : elle et tout ce qu'il y
   -- a dessous sortent du calcul.
   if depth > 0 and ctx.apports and ctx.apports[id] then
     return { id = id, qty = qty, have = { 0, 0, 0 }, need = 0, cost = 0, how = "apport" }

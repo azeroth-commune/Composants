@@ -466,6 +466,28 @@ do
     end
   end
   bronzeR.profession = "Minage"
+  -- L'emplacement du bloc (API.lua) : un bloc confié se réduit à une seule case. La forge (marteau, cuirasse) : la case du
+  -- marteau la représente, la cuirasse s'y fond ; le bronze qui y entre (un autre bloc) et la perle (achetée, de sa part)
+  -- restent liés à elle, un lien par paire, sans quantité quand deux liens s'y fondent.
+  local res = both({ [2841] = "fabriquer" })
+  local cases, liens = ns.reduire(res, nil)
+  assert(cases == res.cases and liens == res.liens, "rien de confié : l'arbre tel quel")
+  gr = ns.dessinArbre(res, { Forge = true })
+  local forge = gr.groupOf.Forge
+  local garde = {}
+  for _, n in ipairs(gr.nodes) do garde[n.key] = n end
+  assert(forge.case == res.caseDe.T1 and garde.T1 and not garde.T2, "la forge : une seule case, celle du marteau")
+  assert(garde.I2841 and garde.I2770 and garde.I2771, "le minage reste entier")
+  assert(#forge.cards == 1 or (#forge.cards == 2 and garde.I5500), "dans sa bande : sa case (et la perle, prise aussi ailleurs)")
+  local vers = {}
+  for _, e in ipairs(gr.edges) do vers[e.from.key .. ">" .. e.to.key] = (vers[e.from.key .. ">" .. e.to.key] or 0) + 1 end
+  assert(vers["T1>I2841"] == 1 and not vers["T2>I2841"], "un seul lien de la forge au bronze")
+  -- Le minage confié : le bronze le représente, le minerai (sa part, pris par personne d'autre) sort du dessin.
+  gr = ns.dessinArbre(both({ [2841] = "fabriquer" }), { Minage = true })
+  garde = {}
+  for _, n in ipairs(gr.nodes) do garde[n.key] = n end
+  assert(garde.I2841 and not garde.I2770 and not garde.I2771 and garde.T1 and garde.T2, "le minage : le bronze seul, la forge entière")
+  assert(gr.cols == 2, "plus d'étage pour le minerai")
 end
 commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
 print("Composants : dessin de l'arbre (étages, relais, bandes) OK")
@@ -636,7 +658,7 @@ print("Composants : signal « ce projet a changé » OK")
 -- L'API publique (README.md) : le global Composants, rien d'autre.
 do
   local API = { "NouveauProjet", "Projet", "Projets", "Renommer", "Supprimer", "Ajouter", "Quantite", "Retirer", "Choix", "Peut",
-    "Tenir", "Arbre", "QuandChange", "Ouvrir", "Rafraichir" }
+    "Tenir", "Arbre", "QuandChange", "Ouvrir", "Rafraichir", "Emplacements" }
   local n = 0
   for _ in pairs(Composants) do n = n + 1 end
   for _, f in ipairs(API) do assert(type(Composants[f]) == "function", "Composants." .. f) end
@@ -686,12 +708,12 @@ do
   assert(#q.lines == 1 and q.lines[1].id == 5541 and q.lines[1].qty == 2 and q.choix[2841] == "acheter", "ses lignes, ses choix de case")
   assert(#b.lines == 0 and b.choix == nil and ns.projetCourant() == q, "le Brouillon vidé, le projet affiché")
   assert(ns.lancer(b) == nil and #Composants.Projets() == n + 1, "Brouillon vide : pas de projet vide")
-  -- On n'y commande rien : Composants ne demande jamais à Handshake les apports du Brouillon.
+  -- On n'y commande rien : Composants ne demande jamais au fournisseur des emplacements les apports du Brouillon.
   local demande
-  Handshake = { Apports = function(x) demande = x return {} end }
-  assert(ns.apportsHandshake(b) == nil and not demande, "pas d'apports pour le Brouillon")
-  assert(ns.apportsHandshake(q) and demande == q, "un projet, si")
-  Handshake = nil
+  local avant = Composants.Emplacements({ apports = function(x) demande = x return {} end })
+  assert(ns.apportsEmplacement(b) == nil and not demande, "pas d'apports pour le Brouillon")
+  assert(ns.apportsEmplacement(q) and demande == q, "un projet, si")
+  Composants.Emplacements(avant)
 end
 print("Composants : Brouillon, Ctrl+clic droit OK")
 
@@ -885,16 +907,16 @@ do
 end
 print("Composants : infobulle des objets OK")
 
--- La TOC : catégorie Métiers, le socle requis, Handshake facultatif, ses données propres ; jamais tests/ ni check.lua.
+-- La TOC : catégorie Métiers, le socle requis (rien d'autre), ses données propres ; jamais tests/ ni check.lua.
 assert(TOC:find("\n## Title: Composants\n", 1, true) and TOC:find("\n## Category: Professions\n## Category-frFR: Métiers\n", 1, true), "titre, catégorie")
 assert(TOC:find("\n## Notes: Chaque objet décomposé en ses composants, jusqu'aux matières premières : l'arbre, vos projets, ce qu'il reste à réunir.\n", 1, true), "notes")
-assert(TOC:find("\n## Dependencies: AzerothCommune\n## OptionalDeps: Handshake\n## SavedVariables: ComposantsDB\n", 1, true), "dépendances")
+assert(TOC:find("\n## Dependencies: AzerothCommune\n## SavedVariables: ComposantsDB\n", 1, true), "dépendances : le socle seul")
 assert(not TOC:find("tests/", 1, true) and not TOC:find("check", 1, true), "ni tests ni check dans la TOC")
 assert(SlashCmdList.COMPOSANTS and SLASH_COMPOSANTS1 == "/composants" and SLASH_COMPOSANTS2 == "/compo", "/composants, /compo")
--- Composants ne touche pas à l'intérieur de Handshake : seulement son API publique (le global Handshake).
+-- Composants ne connaît pas Handshake (ni contrat, ni autre joueur) : c'est Handshake qui se branche sur l'emplacement du bloc.
 for f in TOC:gmatch("([%w_]+)%.lua") do
   local code = io.open("Composants/" .. f .. ".lua"):read("*a"):gsub("%-%-[^\n]*", "")
-  assert(not code:find("HandshakeDB", 1, true) and not code:find("HandshakeFrame", 1, true), f .. ".lua touche à Handshake")
+  assert(not code:find("Handshake", 1, true) and not code:lower():find("contrat", 1, true), f .. ".lua parle de Handshake ou de contrats")
 end
 -- ComposantsDB : réglages par défaut, des projets, rien de relevé.
 local d = ns.db()

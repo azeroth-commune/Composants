@@ -1,5 +1,5 @@
 -- Composants, l'API publique (README.md) : un seul global, Composants, sur le modèle du socle. Seul ce qui est ici est
--- promis aux autres add-ons (Handshake s'en sert pour ses commandes et sa Réponse) ; l'intérieur peut changer.
+-- promis aux autres add-ons (Maîtrise, Handshake) ; l'intérieur peut changer.
 local _, ns = ...
 
 Composants = {
@@ -45,4 +45,18 @@ Composants = {
     ns.openCraftWindow()
   end,
   Rafraichir = function() ns.refreshCraftWindow(); ns.refreshNeeds() end,
+  -- L'emplacement du bloc (CONTEXT.md, Bloc) : un autre add-on dessine dans les blocs de l'arbre de la grande vue et dit
+  -- lesquels il a pris en charge (confiés : réduits à une seule case). f = { confie = fn(p, bloc) → vrai si confié ;
+  -- bloc = fn(zone, p, bloc, confie) dessine dans zone, un Frame posé par Composants (confié : la case du bloc ; sinon
+  -- une bande haute de 16 sur sa ligne de titre, dont f règle la largeur) ; apports = fn(p) → { [itemID] = true } ou nil,
+  -- les cases fournies par un autre, qui sortent de l'arbre }. bloc = un bloc de Composants.Arbre(p).blocs, ou nil = le
+  -- projet entier (sa bande : la ligne d'en-tête de l'arbre). Jamais appelé pour le Brouillon. Un seul fournisseur ;
+  -- rend celui d'avant (nil retire le fournisseur).
+  -- ponytail: un seul fournisseur (Handshake) ; une liste le jour où un deuxième add-on veut dessiner dans les blocs.
+  Emplacements = function(f)
+    local avant = ns.fournisseur
+    ns.fournisseur = f
+    ns.refreshCraftWindow(); ns.refreshNeeds()
+    return avant
+  end,
 }

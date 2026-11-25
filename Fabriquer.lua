@@ -87,7 +87,7 @@ end
 -- "manque". Rien à fabriquer : nil, et fini = true quand les objets du projet sont tous là.
 -- ponytail: l'arbre est recalculé ici, en plus du dessin de la fenêtre ; à partager si ça se sent.
 function ns.prochaineDuProjet(p, metier)
-  local res = ns.projetArbre(p, nil, ns.apportsHandshake(p))
+  local res = ns.projetArbre(p, nil, ns.apportsEmplacement(p))
   local liste = aFabriquer(res)
   for _, f in ipairs(liste) do
     f.p = p
