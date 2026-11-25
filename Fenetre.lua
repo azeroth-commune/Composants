@@ -149,9 +149,10 @@ local function lectureSeule() return ns.phase(projet()) ~= "preparer" end
 
 ---------------------------------------------------------------------------------------------------
 -- Le fil (CONTEXT.md, Phase) « Préparer › Réunir › Fabriquer », en haut des deux vues : la phase du projet affiché se lit
--- sur son bouton (doré, surligné ; les autres en gris) ; clic = aller à cette phase (le Brouillon : lancé d'abord) et
--- montrer sa vue. Fini : aucun surligné, la grande vue dit « Tout est fabriqué ». ns.fil(parent, x, y) le pose et rend la
--- fonction qui le met à jour.
+-- sur son bouton : texte doré, surligné, et non cliquable comme l'onglet choisi du jeu (Disable : le doré seul ne se voyait
+-- pas assez en jeu) ; les autres en gris, clic = aller à cette phase (le Brouillon : lancé d'abord) et montrer sa vue.
+-- Fini : les trois cliquables, et « › Fini » en vert au bout du fil. ns.fil(parent, x, y) le pose et rend la fonction qui
+-- le met à jour.
 local PHASES = {
   { "preparer", "Préparer", "l'arbre et les choix de case ; Lancer passe à Réunir" },
   { "reunir", "Réunir", "ses Besoins seuls ; tout dans les sacs, Fabriquer vient tout seul" },
@@ -181,14 +182,20 @@ function ns.fil(parent, x, y)
       GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:SetMotionScriptsWhileDisabled(true) -- la bulle aussi sur la phase en cours
     bs[i] = b
   end
+  local fini = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  fini:SetPoint("LEFT", bs[#bs], "RIGHT", 6, 0)
+  fini:SetText("› |cff59cc73Fini|r")
   return function()
     local en = ns.phase(projet())
     for i, ph in ipairs(PHASES) do
       if ph[1] == en then bs[i]:SetText("|cffffd100" .. ph[2] .. "|r"); bs[i]:LockHighlight()
       else bs[i]:SetText("|cffbbbbbb" .. ph[2] .. "|r"); bs[i]:UnlockHighlight() end
+      bs[i]:SetEnabled(ph[1] ~= en)
     end
+    fini:SetShown(en == "fini")
   end
 end
 
