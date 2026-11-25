@@ -11,22 +11,27 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
   voir le README de Handshake). Sans lui, rien de tout ça n'apparaît.
 - **Pour le joueur** : `/composants` (ou `/compo`) ouvre la fenêtre ; `/composants <objet> [quantité] [tout]` l'ajoute au
   projet affiché ; `/composants demo [set|ceinture|hasard]` crée un projet d'essai ; Ctrl+clic droit sur un objet
-  n'importe où le met au Brouillon (menu « Projets » ; « Lancer » en fait un projet, « Vider » le vide ; on n'y commande
-  rien). Bouton de minicarte et options : ceux, communs, d'Azeroth Commune.
-- **Phases** : un projet va de Préparer (l'arbre, les choix de case) à Réunir (« Lancer » : ses Besoins seuls, dans la
+  n'importe où le met au Brouillon (en tête de la colonne des projets ; « Lancer » en fait un projet, clic droit « Vider le
+  Brouillon » le vide ; on n'y commande rien). Bouton de minicarte et réglages : ceux, communs, d'Azeroth Commune ; les
+  options du calcul (déduire les sacs, la banque, les autres persos ; compter les recettes pas apprises) sont sur la page
+  Composants des réglages.
+- **La grande vue** : à gauche, la colonne des projets, toujours visible (le Brouillon, puis chaque projet avec sa phase ;
+  clic : l'ouvrir dans la vue de sa phase ; clic droit : Renommer, Supprimer) ; à droite, le nom du projet et le fil, la
+  ligne d'ajout (recherche et quantité ; un objet déposé sur la recherche entre aussi), l'arbre, et en bas un seul bouton
+  d'action qui suit la phase. Pas de légende : la bulle de chaque case dit d'où vient l'objet.
+- **Phases** : un projet va de Préparer (l'arbre, les choix de case ; « Lancer ») à Réunir (ses Besoins seuls, dans la
   petite fenêtre qui prend le coin de la grande), puis Fabriquer tout seul quand tout est dans les sacs (la banque et les
-  autres persos disent où le trouver), puis Fini quand plus rien n'est à fabriquer (gardé ; « Clore le projet » le
-  supprime). Une seule vue à la fois ; le fil « Préparer › Réunir › Fabriquer » en haut des deux montre la phase et y va
-  d'un clic. Changer une ligne ou un choix de case remet le projet en Préparer.
-- **Fabriquer** : quand un projet est tenu (une tranche de Maîtrise, une Réponse de Handshake), un bouton sous la fenêtre de
-  métier du jeu lance sa prochaine fabrication (clic : une ; clic droit : tout ce que les sacs permettent) ; sinon il dit
-  pourquoi (« Ouvre la Forge », « Il manque … », « Recette inconnue : … »).
-- **Tout fabriquer** : en phase Fabriquer, la prochaine fabrication du projet affiché se lit sur sa case de l'arbre, cerclée de lavande, du bas
-  de l'arbre vers le haut. Un bouton dans la case : « Ouvrir Minage » (bouton sécurisé : la macro ouvre le métier), puis
-  « Fabriquer 4 » (un clic les lance toutes), « 2/4… » pendant (le bouton se remplit, pas de second clic), et l'action passe
-  d'elle-même à la case suivante. Rien de possible : « Il manque … » ou « Recette inconnue », grisé, la phrase entière dans
-  la bulle. Fini : « Tout est fabriqué » s'ajoute à la ligne du projet. Ses attributs ne changent que hors combat ; en combat il
-  quitte l'arbre (zoom et glisser restent libres) et revient à la sortie.
+  autres persos disent où le trouver), puis Fini quand plus rien n'est à fabriquer (gardé ; « Clore » le supprime). Une
+  seule vue à la fois ; le fil « Préparer › Réunir › Fabriquer » en haut des deux montre la phase et y va d'un clic. Changer
+  une ligne ou un choix de case remet le projet en Préparer.
+- **Fabriquer** : l'arbre en lecture seule (ni « + », ni quantités, ni choix de case : « Préparer » dans le fil pour
+  changer) ; le bouton d'action nomme la prochaine fabrication du projet affiché (« Barre d'étain ×4 », du bas de l'arbre
+  vers le haut), sa case cerclée de lavande. Clic : une fabrication ; clic droit : tout ce que les sacs permettent ;
+  « Barre d'étain 2/4… » pendant (grisé, pas de second clic), puis la suivante d'elle-même. Sans la fenêtre du bon métier :
+  « Ouvre Minage » (bouton sécurisé : la macro ouvre le métier) ; rien de possible : « Il manque … » ou « Recette
+  inconnue : … », grisé, la phrase entière dans la bulle. C'est le seul endroit où l'on fabrique (plus de bouton sous la
+  fenêtre de métier). Ses attributs ne changent que hors combat ; en combat il quitte la fenêtre et revient à la sortie.
+  Fini : « Tout est fabriqué » s'ajoute à la ligne du projet, et le bouton devient « Clore ».
 - **Infobulle des objets** : au survol d'un objet, « Utilisé dans : <projets> » s'il entre dans l'arbre d'un projet (Brouillon
   compris) et « Fabriqué par : <persos> » si l'un de vos persos connaît une recette qui le fabrique ; rien sinon.
 - **Données propres** : `ComposantsDB` (projets et leur phase, Brouillon, objets en Récolte, options de calcul). Rien de relevé n'y est gardé (ADR 0002 de l'atelier).
@@ -38,8 +43,8 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 | `Donnees.lua` | accès au socle (recettes, inventaires, métiers, HV, noms d'objets), `ComposantsDB` |
 | `Calcul.lua` | « acheter ou fabriquer » : le plan le moins cher d'un objet, choix entre recettes équivalentes, boucles écartées |
 | `Projet.lua` | les projets (identité stable, lignes, choix de case, projet tenu, phases, signal de changement), le Brouillon et Lancer, les cases, les blocs, l'arbre |
-| `Fenetre.lua` | la fenêtre des projets (Préparer, Fabriquer, Fini), son dessin ; le fil et la vue de la phase ; la barre des commandes de Handshake quand il est là ; Ctrl+clic droit ; `/composants` |
-| `Fabriquer.lua` | le bouton « Fabriquer » sous la fenêtre de métier (la prochaine fabrication des projets tenus) et « Tout fabriquer » sur la case de l'arbre (celle du projet affiché) |
+| `Fenetre.lua` | la grande vue (Préparer, Fabriquer, Fini) : la colonne des projets, le nom et le fil, la ligne d'ajout, l'arbre, le bouton d'action (Lancer, Clore) ; la vue de la phase ; la barre des commandes de Handshake quand il est là ; les options du calcul dans les réglages du socle ; Ctrl+clic droit ; `/composants` |
+| `Fabriquer.lua` | la prochaine fabrication du projet affiché : le bouton d'action en Fabriquer, sa case cerclée |
 | `Infobulle.lua` | les lignes « Utilisé dans » / « Fabriqué par » dans l'infobulle des objets |
 | `Besoins.lua` | les Besoins du projet affiché (Réunir) : réuni = dans les sacs ; leur fenêtre, la bascule « Achat » / « Récolte », la liste d'achats d'Auctionator |
 | `API.lua` | le global `Composants` |
@@ -76,7 +81,7 @@ C.Tenir(p, "Tranche 75 → 90", { { recette = 2659, fois = 5 }, { recette = 7420
 C.Tenir(p, nil)              -- lâché
 -- L'arbre et les blocs : p = un projet, ou toute table { lines, choix } (la part d'une commande)
 local res = C.Arbre(p, sansStock, apports)
--- sansStock = true : toutes les recettes, aucun stock déduit ; sinon les options de la fenêtre (sacs, banque…).
+-- sansStock = true : toutes les recettes, aucun stock déduit ; sinon les options du calcul (réglages : sacs, banque…).
 -- apports = { [itemID] = true } facultatif : ces cases (et ce qu'il y a dessous) sortent de l'arbre, n.apport = leur quantité.
 -- res = { roots (le plan de chaque ligne), cases, caseDe (["T<i>"] ligne i, ["I<id>"] un objet), liens, total, incomplete,
 --   valeur (Valeur à l'HV : ses objets au prix le plus bas, nil sans prix), rapporte (nil si coût incomplet),
