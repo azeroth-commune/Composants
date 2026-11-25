@@ -264,7 +264,7 @@ test("une ligne fabrication compte ses fabrications faites, même lancées par l
         Composants.Tenir(p, nil)
         -- Fabriquer par le fil.
         for _, c in ipairs({ ComposantsFrame:GetChildren() }) do
-            if c:GetObjectType() == "Button" and c:GetText() == "Fabriquer" then c:Click() break end
+            if c:GetObjectType() == "Button" and ((c:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) == "Fabriquer" then c:Click() break end
         end
         ecouler(1)
         assertEquals("fabriquer", p.phase)
