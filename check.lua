@@ -959,11 +959,15 @@ do
   poser({ [2841] = 33, [FLUX] = 16 })
   f = ns.prochaineDuProjet(p, "Minage")
   assert(f.etat == "ouvrir" and T(f) == "Ouvrir Forge : 4 × " .. nom(DORY), T(f))
-  requis = { { name = "Enclume", met = false } }
+  -- Sans l'atelier (le jeu le dit, GetRecipeRequirements), même avec les composants : le bouton le dit, rien ne se lance.
+  requis, faisable[99101] = { { name = "Lingots", met = true }, { name = "Enclume", met = false } }, 4
   f = ns.prochaineDuProjet(p, "Forge")
-  assert(f.cle == 99101 and f.etat == "manque" and T(f) == "Il manque Enclume pour 4 × " .. nom(DORY), T(f))
-  assert(C(f) == "Il manque Enclume", C(f))
-  requis, faisable[99101] = {}, 4
+  assert(f.cle == 99101 and f.etat == "atelier" and f.atelier == "Enclume", tostring(f.etat))
+  assert(C(f) == "Requiert : Enclume", C(f))
+  assert(T(f) == "Requiert Enclume pour fabriquer 4 × " .. nom(DORY) .. " : approche-toi de l'atelier (ou prends l'outil)", T(f))
+  requis = { { name = "Enclume" } } -- le jeu ne dit pas : rien de deviné
+  assert(ns.prochaineDuProjet(p, "Forge").etat == "pret", "met absent : prête")
+  requis = {}
   f = ns.prochaineDuProjet(p, "Forge")
   assert(f.etat == "pret" and T(f) == "Fabriquer 4 × " .. nom(DORY), T(f))
   -- Les 4 Dory en sac : tout est fait.

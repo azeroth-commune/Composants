@@ -223,7 +223,7 @@ end)
 test("une ligne fabrication compte ses fabrications faites, même lancées par le jeu", function()
     if not ProfessionsFrame then C_AddOns.LoadAddOn("Blizzard_Professions") end
     local T, garde = C_TradeSkillUI, {}
-    local sacs = { [2771] = 4 }
+    local sacs, requis, lances = { [2771] = 4 }, {}, 0
     local faux = {
         GetBaseProfessionInfo = function() return { professionName = "Minage", skillLevel = 1, maxSkillLevel = 75 } end,
         IsTradeSkillLinked = function() return false end,
@@ -231,8 +231,8 @@ test("une ligne fabrication compte ses fabrications faites, même lancées par l
         IsNPCCrafting = function() return false end,
         GetRecipeInfo = function(k) return { recipeID = k, learned = true } end,
         GetCraftableCount = function(k) return k == 3304 and (sacs[2771] or 0) or 0 end,
-        GetRecipeRequirements = function() return {} end,
-        CraftRecipe = function() end,
+        GetRecipeRequirements = function() return requis end,
+        CraftRecipe = function() lances = lances + 1 end,
     }
     for n, fn in pairs(faux) do garde[n], T[n] = T[n], fn end
     local G = { Conteneurs = AzerothCommune.Conteneurs, GetItemCount = C_Item.GetItemCount, unlearned = ComposantsDB.options.unlearned }
@@ -271,6 +271,23 @@ test("une ligne fabrication compte ses fabrications faites, même lancées par l
         assertEquals("fabriquer", p.phase)
         local b = ComposantsToutFabriquer
         assertTrue(b:IsShown() and b:GetText():find(" ×4$") ~= nil, b:GetText())
+        -- Loin du fourneau (le jeu le dit) : le bouton le dit, grisé, sa bulle explique, le clic ne lance rien.
+        requis = { { name = "Fourneau", met = false } }
+        FireEvent("TRADE_SKILL_LIST_UPDATE")
+        ecouler(1)
+        assertEquals("Requiert : Fourneau", b:GetText())
+        assertTrue(not b:IsEnabled(), "grisé")
+        b:Click("LeftButton")
+        assertEquals(0, lances, "rien de lancé")
+        b:GetScript("OnEnter")(b)
+        local bulle = {}
+        for _, r in ipairs({ GameTooltip:GetRegions() }) do if r.GetText and r:GetText() then bulle[#bulle + 1] = r:GetText() end end
+        GameTooltip:Hide()
+        assertTrue(table.concat(bulle, "\n"):find("Requiert Fourneau", 1, true) ~= nil, table.concat(bulle, " / "))
+        requis = {}
+        FireEvent("TRADE_SKILL_LIST_UPDATE")
+        ecouler(1)
+        assertTrue(b:IsEnabled() and b:GetText():find(" ×4$") ~= nil, "le fourneau là : prête, " .. b:GetText())
         -- Une fonte par « Créer » du jeu : 3 à faire, l'arbre et le bouton suivent.
         FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "fonte", 3304)
         ecouler(1)

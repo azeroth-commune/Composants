@@ -31,8 +31,12 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
   changer) ; le bouton d'action nomme la prochaine fabrication du projet affiché (« Barre d'étain ×4 », du bas de l'arbre
   vers le haut), sa case cerclée d'or. Clic : une fabrication ; clic droit : tout ce que les sacs permettent ;
   « Barre d'étain 2/4… » pendant (grisé, pas de second clic), puis la suivante d'elle-même. Sans la fenêtre du bon métier :
-  « Ouvre Minage » (bouton sécurisé : la macro ouvre le métier) ; rien de possible : « Il manque … » ou « Recette
-  inconnue : … », grisé, la phrase entière dans la bulle. C'est le seul endroit où l'on fabrique (plus de bouton sous la
+  « Ouvre Minage » (bouton sécurisé : la macro ouvre le métier) ; loin de l'atelier ou sans l'outil que le
+  jeu dit requis : « Requiert : Enclume », grisé ; rien de possible : « Il manque … » ou « Recette
+  inconnue : … », grisé, la phrase entière dans la bulle. Une ligne fabrication compte ses fabrications faites (par ce
+  bouton ou par « Créer » du jeu, pour le projet affiché s'il est lancé et qu'il lui en reste, sinon le premier de la
+  liste) : l'arbre, les Besoins et le bouton n'en demandent plus que le reste. Le temps de fabrication qui reste est sur la
+  ligne de chaque étape et sur celle du projet. C'est le seul endroit où l'on fabrique (plus de bouton sous la
   fenêtre de métier). Ses attributs ne changent que hors combat ; en combat il quitte la fenêtre et revient à la sortie.
   Fini : « Tout est fabriqué » s'ajoute à la ligne du projet, et le bouton devient « Clore ».
 - **Infobulle des objets** : au survol d'un objet, « Utilisé dans : <projets> » s'il entre dans l'arbre d'un projet (Brouillon
