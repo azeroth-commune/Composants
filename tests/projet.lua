@@ -324,6 +324,12 @@ test("Réunir → Fabriquer quand tout est dans les sacs, pas à la banque ; Fin
         sacs, banque = { [2771] = 4 }, {}
         Composants.Rafraichir()
         assertEquals("reunir", p.phase, "dans les sacs, mais la recette à apprendre : on reste en Réunir")
+        -- Une recette de maître (aucun objet ne l'apprend) : « Apprendre : … chez le maître », pas un objet jamais vu.
+        local rec = lignesBesoins()[3576]
+        assertNotNil(rec, "la ligne de la recette à apprendre")
+        assertEquals("Apprendre : Fonte de l'étain", rec.text:GetText())
+        assertEquals("chez le maître", rec.count:GetText())
+        assertTrue((rec.info or ""):find("maître de Minage", 1, true) ~= nil, rec.info or "")
         connue = true
         Composants.Rafraichir()
         assertEquals("fabriquer", p.phase, "dans les sacs, recette connue : Fabriquer tout seul")

@@ -588,6 +588,13 @@ local res = { cases = {
 local rows, recipes = ns.orderNeeds(res)
 assert(#rows == 2 and rows[1].id == 3858 and rows[1].required == 36 and rows[2].need == 0, "manquants d'abord, le complet ensuite")
 assert(#recipes == 1 and recipes[1].item == 7989, "recette trouvée par son nom")
+-- Une recette de maître (aucun objet ne l'apprend) : pas d'objet, son métier ; un patron connu de la base : cet objet.
+res.cases[1] = { id = 7964, kind = "target", qty = 1, made = 1, need = 0, have = { 0, 0, 0 }, unknown = true,
+  recipe = { name = "Pierre à aiguiser solide", profession = "Forge" } }
+rows, recipes = ns.orderNeeds(res)
+assert(#recipes == 1 and recipes[1].item == nil and recipes[1].metier == "Forge", "recette de maître : pas d'objet")
+res.cases[1].recipe.patron = 7990
+assert(ns.orderNeeds(res) and select(2, ns.orderNeeds(res))[1].item == 7990, "le patron de la base")
 print("Composants : besoins OK")
 
 aucunReleve("après les calculs")
