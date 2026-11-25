@@ -11,7 +11,7 @@
 -- prend n'est plus là pour le suivant.
 local _, ns = ...
 
-local W, H_FEN = 1000, 716
+local W, H_FEN = 1000, 690
 local NODE_W, NODE_H, GAP, TOP = 190, 42, 18, 36 -- l'écart et le haut laissent la place au nom des artisans
 local RELAY = 14 -- place réservée à un lien qui traverse un étage
 local BAND_GAP = 30 -- entre les rectangles de deux artisans (la place de leur nom)
@@ -467,18 +467,16 @@ local function refresh()
       or "|cff999999Tape un nom (suggestions) ou dépose un objet, puis Ajouter ; Ctrl+clic droit sur un objet le met au Brouillon.|r")
   else
     local o, cost = projet(), ns.moneyShort(total) .. (incomplete and " |cffe64d4d+ ?|r" or "")
+    local fini = ns.projetFini(res) and " · |cff59cc73Tout est fabriqué|r" or "" -- la fin de « Tout fabriquer » (Fabriquer.lua)
     if replying() then -- ma part, mon prix, ce qui reste pour mon travail
       local price = H().Commande(o).tip or 0
-      header(1, 0, ("Ma part · %s · mon prix %s · travail %s"):format(cost, ns.moneyShort(price), ns.moneySigned(price - total)))
+      header(1, 0, ("Ma part · %s · mon prix %s · travail %s"):format(cost, ns.moneyShort(price), ns.moneySigned(price - total)) .. fini)
     else
       -- Valeur à l'HV de ce qu'on fabrique, et ce que ça rapporte quand le coût est complet ; rien sans prix.
       local v = res.valeur and (" · vaut %s à l'HV · %s"):format(ns.moneyShort(res.valeur),
         res.rapporte and "rapporte " .. ns.moneySigned(res.rapporte) or "|cffe64d4dcoût incomplet|r") or ""
-      header(1, 0, (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost .. v)
+      header(1, 0, (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost .. v .. fini)
     end
-    -- Un « Étage » que la ligne du projet recouvrirait est sauté (la case de l'étape dit déjà où l'on est).
-    local libre = headers[1]:GetStringWidth() + 24
-    for c = 1, g.cols - 1 do if spacing * c >= libre then header(c + 1, spacing * c, "Étage " .. c) end end
   end
 
   local x = function(n) return MARGIN + n.col * spacing end
@@ -504,6 +502,14 @@ local function refresh()
     c:Show()
   end
   for i = #g.nodes + 1, #cards do cards[i]:Hide() end
+  -- « Tout fabriquer » sur la case de la prochaine fabrication (Fabriquer.lua) ; sans case, au bout de la ligne du projet.
+  local pris = ns.rafraichirToutFabriquer(function(id)
+    for i = 1, #g.nodes do if cards[i].node.id == id then return cards[i] end end
+  end, headers[1])
+  if #roots > 0 then -- un « Étage » que la ligne du projet recouvrirait est sauté (la case de l'étape dit déjà où l'on est)
+    local libre = headers[1]:GetStringWidth() + 24 + pris
+    for c = 1, g.cols - 1 do if spacing * c >= libre then header(c + 1, spacing * c, "Étage " .. c) end end
+  end
 
   -- Un rectangle par artisan : toutes ses cases (et ce qui n'est pas fabriqué sous elles), à sa couleur, son nom
   -- au-dessus (et « recette à apprendre »). Rouge : personne de ta liste ne sait le faire.
@@ -658,7 +664,6 @@ local function refresh()
 
   frame.status:SetText(ns.texteHV(market)
     .. " · « + » décompose, « – » achète tout fait (violet = ton choix) · molette : zoom, glisser : déplacer, clic milieu : ajuster")
-  ns.rafraichirToutFabriquer()
 end
 ns.refreshCraftWindow = refresh
 
@@ -924,7 +929,7 @@ local function build()
   -- La zone de dessin : molette = zoom autour du curseur, glisser le fond = déplacer, clic du milieu = vue ajustée.
   scroll = CreateFrame("Frame", nil, frame)
   scroll:SetPoint("TOPLEFT", 14, hs and -180 or -156) -- avec Handshake, la ligne des commandes au-dessus
-  scroll:SetPoint("BOTTOMRIGHT", -14, 56)
+  scroll:SetPoint("BOTTOMRIGHT", -14, 30)
   scroll:SetClipsChildren(true)
   content = CreateFrame("Frame", nil, scroll)
   content:SetSize(W - 28, 1)
@@ -962,8 +967,7 @@ local function build()
   end)
 
   frame.status = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  frame.status:SetPoint("BOTTOMLEFT", 14, 36)
-  ns.boutonToutFabriquer(frame) -- dessous : « Tout fabriquer » (Fabriquer.lua)
+  frame.status:SetPoint("BOTTOMLEFT", 14, 10)
 
   -- Les sacs changent, un nom d'objet arrive du serveur : on recalcule, au plus une fois par seconde.
   local pending

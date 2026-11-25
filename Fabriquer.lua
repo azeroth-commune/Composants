@@ -129,9 +129,14 @@ function ns.prochaineDuProjet(p, metier)
   end
   local f = liste[1]
   if f then f.p, f.etat, f.manque = p, "manque", manque(f) return f end
-  local fini = #res.roots > 0
-  for _, c in ipairs(res.cases) do if c.kind == "target" and (c.need > 0 or c.made > 0) then fini = false end end
-  return nil, fini
+  return nil, ns.projetFini(res)
+end
+
+-- Les objets du projet sont tous là (rien à acheter ni à fabriquer pour eux) : « Tout est fabriqué » sur sa ligne.
+function ns.projetFini(res)
+  if #res.roots == 0 then return false end
+  for _, c in ipairs(res.cases) do if c.kind == "target" and (c.need > 0 or c.made > 0) then return false end end
+  return true
 end
 
 -- « 4 × Barre d'étain » : les objets que n fabrications donnent ; un enchantement, n × son nom.
@@ -149,6 +154,16 @@ function ns.texteToutFabriquer(f, fini, e)
   if f.etat == "inconnue" then return "Recette inconnue : " .. (f.recette.name or "?") end
   if f.manque then return ("Il manque %s pour %s"):format(f.manque, combien(f, f.fois)) end
   return "Il manque de quoi faire " .. combien(f, f.fois)
+end
+
+-- Le texte court du bouton sur la case (la case dit déjà quel objet) : « Ouvrir Minage », « Fabriquer 4 », « 2/4… »,
+-- « Il manque … » ; la phrase entière va dans sa bulle (texteToutFabriquer).
+function ns.texteCase(f, e)
+  if e then return ("%d/%d…"):format(e.fait * e.per, e.n * e.per) end
+  if f.etat == "pret" then return "Fabriquer " .. (f.id and f.n * math.max(1, f.recette.made_min or 1) or f.n) end
+  if f.etat == "ouvrir" then return "Ouvrir " .. (f.recette.profession or "son métier") end
+  if f.etat == "inconnue" then return "Recette inconnue" end
+  return "Il manque " .. (f.manque or "un composant")
 end
 
 -- « Ouvre la Forge », « Ouvre l'Alchimie », « Ouvre le Travail du cuir ».
@@ -223,60 +238,112 @@ end
 ns.rafraichirFabriquer = rafraichir
 
 ---------------------------------------------------------------------------------------------------
--- « Tout fabriquer », sous la barre d'état de la fenêtre des projets : guider sans réfléchir, quoi fabriquer, combien, dans
--- quelle fenêtre. Un clic lance toute la prochaine fabrication du projet affiché (CraftRecipe(recette, n) : le jeu
--- enchaîne, comme son « Créer tout ») ; pendant ce temps le bouton montre l'avancement et ne prend pas de second clic ;
--- fini, il passe tout seul à la suivante. La fenêtre du métier fermée : « Ouvrir <métier> », car l'ouvrir est une action
--- protégée (CastSpell) : c'est un bouton sécurisé dont la macro lance le métier. Jamais deux recettes sur un clic.
--- Ses attributs ne s'écrivent que hors combat ; en combat il quitte la fenêtre (un enfant protégé la rendrait protégée :
--- ni fermée ni déplacée en combat) et y revient à la sortie.
-local tf, tfFenetre, tfF, encours
+-- « Tout fabriquer », sur la case de l'arbre qui est la prochaine fabrication du projet affiché : guider sans réfléchir,
+-- quoi fabriquer, combien, dans quelle fenêtre. Un bouton dans la case (à la place de sa ligne de stock), la case cerclée
+-- de lavande. Un clic lance toute la fabrication (CraftRecipe(recette, n) : le jeu enchaîne, comme son « Créer tout ») ;
+-- pendant ce temps le bouton se remplit (« 2/4… ») et ne prend pas de second clic ; fini, il passe tout seul à la case
+-- suivante. La fenêtre du métier fermée : « Ouvrir <métier> », car l'ouvrir est une action protégée (CastSpell) : c'est
+-- un bouton sécurisé dont la macro lance le métier. Jamais deux recettes sur un clic.
+-- Un seul bouton, replacé sur la bonne case hors combat : enfant de la case, il suit le zoom et le glisser du dessin sans
+-- rien faire. Ses attributs ne s'écrivent que hors combat ; en combat il quitte l'arbre (un enfant protégé rendrait le
+-- dessin protégé : ni zoom, ni glisser, ni fenêtre fermée en combat) et y revient à la sortie.
+local tf, tfF, encours
 local function enCombat() return InCombatLockdown and InCombatLockdown() end
 local function enIncantation() return UnitCastingInfo and UnitCastingInfo("player") ~= nil end
-
-local function rafraichirTout()
-  if not (tf and tfFenetre:IsShown()) or enCombat() then return end -- en combat : refait à la sortie (PLAYER_REGEN_ENABLED)
-  -- ponytail: fin sans événement (le jeu refuse sans incantation) : 3 s sans fonte ni incantation, la fabrication est finie.
-  if encours and (encours.fait >= encours.n or (not enIncantation() and GetTime() - encours.t > 3)) then encours = nil end
-  local f, fini = ns.prochaineDuProjet(ns.projetCourant(), ProfessionsFrame and ProfessionsFrame:IsShown() and metierOuvert() or nil)
-  tfF = f
-  local pret = f and f.etat == "pret" and not encours
-  local ouvrir = f and f.etat == "ouvrir" and not encours
-  tf:SetText(ns.texteToutFabriquer(f, fini, encours))
-  tf:SetWidth(tf:GetTextWidth() + 30)
-  tf:SetAttribute("type", ouvrir and "macro" or nil)
-  tf:SetAttribute("macrotext", ouvrir and ("/cast " .. f.recette.profession) or nil)
-  tf:SetEnabled((pret or ouvrir) and true or false)
-end
-ns.rafraichirToutFabriquer = rafraichirTout
+local LAVANDE = { 0.66, 0.56, 1.00 }
 
 local function lancer()
   local f = tfF
   if encours or not (f and f.etat == "pret") then return end -- en cours, ou « Ouvrir » (la macro s'en charge)
-  encours = { cle = f.cle, nom = f.id and nom(f.id) or f.recette.name or "?", per = f.id and math.max(1, f.recette.made_min or 1) or 1,
-    n = f.n, fait = 0, t = GetTime() }
+  encours = { cle = f.cle, id = f.id, nom = f.id and nom(f.id) or f.recette.name or "?",
+    per = f.id and math.max(1, f.recette.made_min or 1) or 1, n = f.n, fait = 0, t = GetTime() }
   C_TradeSkillUI.CraftRecipe(f.cle, f.n)
-  C_Timer.After(3.5, rafraichirTout)
-  rafraichirTout()
+  C_Timer.After(3.5, ns.refreshCraftWindow)
+  ns.refreshCraftWindow()
 end
 
--- Le bouton dans la fenêtre (fait hors combat seulement : un bouton sécurisé ne se crée ni ne s'ancre en combat).
-local function placer()
-  if not tfFenetre or enCombat() then return end
-  if not tf then
-    tf = CreateFrame("Button", "ComposantsToutFabriquer", tfFenetre, "SecureActionButtonTemplate, UIPanelButtonTemplate")
-    tf:SetHeight(22)
-    tf:RegisterForClicks("AnyDown", "AnyUp") -- comme les boutons sécurisés de Be a Good Pal ; le second appel de lancer ne fait rien
-    tf:SetAttribute("useOnKeyDown", GetCVarBool and GetCVarBool("ActionButtonUseKeyDown") or false)
-    tf:SetScript("PostClick", lancer)
-  end
-  tf:SetParent(tfFenetre)
-  tf:ClearAllPoints()
-  tf:SetPoint("BOTTOMLEFT", tfFenetre, "BOTTOMLEFT", 14, 8)
-  tf:Show()
-  rafraichirTout()
+local function construireTout() -- hors combat seulement : un bouton sécurisé ne se crée ni ne s'ancre en combat
+  tf = CreateFrame("Button", "ComposantsToutFabriquer", UIParent, "SecureActionButtonTemplate, UIPanelButtonTemplate")
+  tf:SetNormalFontObject(GameFontNormalSmall)
+  tf:SetHighlightFontObject(GameFontHighlightSmall)
+  tf:SetDisabledFontObject(GameFontDisableSmall)
+  local t = tf:GetFontString()
+  t:ClearAllPoints(); t:SetPoint("LEFT", 4, 0); t:SetPoint("RIGHT", -4, 0); t:SetWordWrap(false)
+  tf:RegisterForClicks("LeftButtonDown", "LeftButtonUp") -- les deux, selon ActionButtonUseKeyDown ; lancer ne part qu'une fois
+  tf:SetAttribute("useOnKeyDown", GetCVarBool and GetCVarBool("ActionButtonUseKeyDown") or false)
+  tf:SetMotionScriptsWhileDisabled(true) -- la bulle dit aussi pourquoi il est grisé
+  tf:SetScript("PostClick", lancer)
+  -- L'avancement : le bouton se remplit de lavande, comme une barre d'incantation.
+  tf.fill = tf:CreateTexture(nil, "ARTWORK")
+  tf.fill:SetPoint("TOPLEFT", 2, -2); tf.fill:SetPoint("BOTTOMLEFT", 2, 2)
+  tf.fill:SetColorTexture(LAVANDE[1], LAVANDE[2], LAVANDE[3], 0.55)
+  -- Le contour de la case : textures du bouton, ancrées à sa case (elles partent avec lui en combat).
+  tf.contour = {}
+  for i = 1, 4 do tf.contour[i] = tf:CreateTexture(nil, "OVERLAY") end
+  tf:SetScript("OnEnter", function(self)
+    if not tfF then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:AddLine("Prochaine fabrication du projet", LAVANDE[1], LAVANDE[2], LAVANDE[3])
+    GameTooltip:AddLine(ns.texteToutFabriquer(tfF, nil, encours), 1, 1, 1, true)
+    if tfF.etat == "ouvrir" and not encours then GameTooltip:AddLine("Clic : ouvre la fenêtre du métier, puis clic : fabrique tout", 0.6, 0.6, 0.6, true)
+    elseif tfF.etat == "pret" and not encours then GameTooltip:AddLine("Clic : fabrique tout, le jeu enchaîne", 0.6, 0.6, 0.6, true) end
+    GameTooltip:Show()
+  end)
+  tf:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
-function ns.boutonToutFabriquer(fenetre) tfFenetre = fenetre; placer() end
+
+local function contour(c, k, a)
+  local b = tf.contour
+  for i = 1, 4 do b[i]:ClearAllPoints(); b[i]:SetColorTexture(k[1], k[2], k[3], a); b[i]:Show() end
+  b[1]:SetPoint("TOPLEFT", c, -1, 1); b[1]:SetPoint("TOPRIGHT", c, 1, 1); b[1]:SetHeight(2)
+  b[2]:SetPoint("BOTTOMLEFT", c, -1, -1); b[2]:SetPoint("BOTTOMRIGHT", c, 1, -1); b[2]:SetHeight(2)
+  b[3]:SetPoint("TOPLEFT", c, -1, 1); b[3]:SetPoint("BOTTOMLEFT", c, -1, -1); b[3]:SetWidth(2)
+  b[4]:SetPoint("TOPRIGHT", c, 1, 1); b[4]:SetPoint("BOTTOMRIGHT", c, 1, -1); b[4]:SetWidth(2)
+end
+
+-- Appelé à la fin de chaque dessin de l'arbre (Fenetre.lua) : carteDe(id) = la case affichée de cet objet ; ligne = la
+-- ligne du projet, où va le bouton d'une fabrication sans case (un enchantement). Rend la largeur prise sur cette ligne.
+function ns.rafraichirToutFabriquer(carteDe, ligne)
+  if enCombat() then return 0 end -- en combat : refait à la sortie (PLAYER_REGEN_ENABLED)
+  -- ponytail: fin sans événement (le jeu refuse sans incantation) : 3 s sans fonte ni incantation, la fabrication est finie.
+  if encours and (encours.fait >= encours.n or (not enIncantation() and GetTime() - encours.t > 3)) then encours = nil end
+  local f = ns.prochaineDuProjet(ns.projetCourant(), ProfessionsFrame and ProfessionsFrame:IsShown() and metierOuvert() or nil)
+  tfF = f
+  local id = encours and encours.id or f and f.id
+  local case = id and carteDe(id)
+  if not (f or encours) or not (case or ligne) then
+    if tf then tf:Hide() end
+    return 0
+  end
+  if not tf then construireTout() end
+  local ouvrir = f and f.etat == "ouvrir" and not encours
+  local actif = encours or ouvrir or (f and f.etat == "pret")
+  tf:SetText(ns.texteCase(f, encours))
+  tf:SetAttribute("type", ouvrir and "macro" or nil)
+  tf:SetAttribute("macrotext", ouvrir and ("/cast " .. f.recette.profession) or nil)
+  tf:SetEnabled((actif and not encours) and true or false)
+  tf:SetDisabledFontObject(encours and GameFontHighlightSmall or GameFontDisableSmall) -- l'avancement se lit, en blanc
+  tf:ClearAllPoints()
+  local pris = 0
+  if case then
+    tf:SetParent(case)
+    tf:SetFrameLevel(case:GetFrameLevel() + 3) -- au-dessus du champ de quantité d'une case du projet
+    tf:SetPoint("TOPLEFT", case, "TOPLEFT", case.node.kind == "target" and 80 or 38, -18) -- la ligne de stock (subText)
+    tf:SetPoint("TOPRIGHT", case, "TOPRIGHT", -4, -18)
+    contour(case, actif and LAVANDE or { 0.6, 0.6, 0.62 }, actif and 0.95 or 0.5)
+  else
+    tf:SetParent(ligne:GetParent())
+    tf:SetPoint("LEFT", ligne, "RIGHT", 10, 0)
+    tf:SetWidth(tf:GetTextWidth() + 16)
+    for i = 1, 4 do tf.contour[i]:Hide() end
+    pris = tf:GetWidth() + 10
+  end
+  tf:SetHeight(15)
+  tf.fill:SetShown(encours and encours.fait > 0 or false)
+  if encours then tf.fill:SetWidth(math.max(1, (tf:GetWidth() - 4) * encours.fait / encours.n)) end
+  tf:Show()
+  return pris
+end
 
 -- Fenêtre de métier ouverte ou mise à jour, sacs changés (une fabrication finie), projet changé : au plus une fois par
 -- image d'événements.
@@ -284,7 +351,7 @@ local prevu
 local function bientot()
   if prevu then return end
   prevu = true
-  C_Timer.After(0.2, function() prevu = false; rafraichir(); rafraichirTout() end)
+  C_Timer.After(0.2, function() prevu = false; rafraichir(); ns.refreshCraftWindow() end)
 end
 local ev = CreateFrame("Frame")
 for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_CLOSE", "BAG_UPDATE_DELAYED",
@@ -297,7 +364,6 @@ ev:SetScript("OnEvent", function(_, e, _, _, sort)
     if tf then tf:Hide(); tf:ClearAllPoints(); tf:SetParent(UIParent) end
     return
   end
-  if e == "PLAYER_REGEN_ENABLED" then placer() end
   if encours and sort == encours.cle then -- l'avancement de « Tout fabriquer »
     if e == "UNIT_SPELLCAST_SUCCEEDED" then
       encours.fait, encours.t = encours.fait + 1, GetTime()

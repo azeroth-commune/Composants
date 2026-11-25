@@ -16,8 +16,9 @@ _Avoid_: craft, ligne forcée
 
 **Prochaine fabrication** (d'un projet):
 Ce qu'il faut fabriquer maintenant : dans l'ordre de l'arbre, du bas vers le haut (les barres avant l'armure), la première
-fabrication que les composants des sacs permettent, faite d'un coup dans la fenêtre de son métier ; le bouton « Tout
-fabriquer » la nomme avec son nombre, la lance, puis passe à la suivante. Jamais deux recettes sur un clic.
+fabrication que les composants des sacs permettent, faite d'un coup dans la fenêtre de son métier. Elle se lit sur sa case
+de l'arbre, cerclée de lavande, dont le bouton « Tout fabriquer » ouvre le métier, la lance, se remplit pendant, puis passe à
+la case suivante ; quand rien n'est possible, la case dit ce qui manque, grisée. Jamais deux recettes sur un clic.
 _Avoid_: étape suivante, file de fabrication
 
 **Brouillon**:

@@ -16,10 +16,12 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 - **Fabriquer** : quand un projet est tenu (une tranche de Maîtrise, une Réponse de Handshake), un bouton sous la fenêtre de
   métier du jeu lance sa prochaine fabrication (clic : une ; clic droit : tout ce que les sacs permettent) ; sinon il dit
   pourquoi (« Ouvre la Forge », « Il manque … », « Recette inconnue : … »).
-- **Tout fabriquer** : sous la barre d'état de la fenêtre des projets, un bouton guide le projet affiché d'une fabrication à
-  l'autre, du bas de l'arbre vers le haut : « Ouvrir Minage : 4 × Barre d'étain » (bouton sécurisé : la macro ouvre le
-  métier), puis « Fabriquer 4 × Barre d'étain » (un clic les lance toutes), « Barre d'étain 2/4… » pendant, et la suivante
-  quand c'est fini ; « Il manque … pour … », « Tout est fabriqué ». Ses attributs ne changent que hors combat.
+- **Tout fabriquer** : la prochaine fabrication du projet affiché se lit sur sa case de l'arbre, cerclée de lavande, du bas
+  de l'arbre vers le haut. Un bouton dans la case : « Ouvrir Minage » (bouton sécurisé : la macro ouvre le métier), puis
+  « Fabriquer 4 » (un clic les lance toutes), « 2/4… » pendant (le bouton se remplit, pas de second clic), et l'action passe
+  d'elle-même à la case suivante. Rien de possible : « Il manque … » ou « Recette inconnue », grisé, la phrase entière dans
+  la bulle. « Tout est fabriqué » s'ajoute à la ligne du projet. Ses attributs ne changent que hors combat ; en combat il
+  quitte l'arbre (zoom et glisser restent libres) et revient à la sortie.
 - **Infobulle des objets** : au survol d'un objet, « Utilisé dans : <projets> » s'il entre dans l'arbre d'un projet (Brouillon
   compris) et « Fabriqué par : <persos> » si l'un de vos persos connaît une recette qui le fabrique ; rien sinon.
 - **Données propres** : `ComposantsDB` (projets, Brouillon, projets mis dans les Besoins, objets en Récolte, options de calcul). Rien de relevé n'y est gardé (ADR 0002 de l'atelier).
@@ -32,7 +34,7 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 | `Calcul.lua` | « acheter ou fabriquer » : le plan le moins cher d'un objet, choix entre recettes équivalentes, boucles écartées |
 | `Projet.lua` | les projets (identité stable, lignes, choix de case, projet tenu, signal de changement), le Brouillon, les cases, les blocs, l'arbre |
 | `Fenetre.lua` | la fenêtre des projets, son dessin ; la barre des commandes de Handshake quand il est là ; Ctrl+clic droit ; `/composants` |
-| `Fabriquer.lua` | le bouton « Fabriquer » sous la fenêtre de métier (la prochaine fabrication des projets tenus) et « Tout fabriquer » sous la fenêtre des projets (celle du projet affiché) |
+| `Fabriquer.lua` | le bouton « Fabriquer » sous la fenêtre de métier (la prochaine fabrication des projets tenus) et « Tout fabriquer » sur la case de l'arbre (celle du projet affiché) |
 | `Infobulle.lua` | les lignes « Utilisé dans » / « Fabriqué par » dans l'infobulle des objets |
 | `Besoins.lua` | les Besoins : les projets qu'on y met, puis le Brouillon, sur un seul stock ; leur fenêtre, la bascule « Achat » / « Récolte », la liste d'achats d'Auctionator |
 | `API.lua` | le global `Composants` |

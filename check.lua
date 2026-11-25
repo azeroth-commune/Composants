@@ -785,26 +785,30 @@ do
     GetRecipeRequirements = function() return requis end,
   }
   C_Item.GetItemCount = function(id) return sacs[id] or 0 end
-  local T = ns.texteToutFabriquer
+  local T, C = ns.texteToutFabriquer, ns.texteCase -- la phrase (la bulle), le texte court (le bouton sur la case)
   poser({ [2841] = 7, [2840] = 13, [3576] = 9, [2771] = 4 })
   local p = Composants.NouveauProjet({ name = "Dory", lines = { { id = DORY, qty = 4 } } })
   -- Aucune fenêtre de métier : d'abord les 4 barres d'étain (le bas de l'arbre), dans la fenêtre du Minage.
   local f = ns.prochaineDuProjet(p, nil)
   assert(f and f.cle == 3304 and f.etat == "ouvrir" and f.n == 4, "d'abord l'étain, fenêtre à ouvrir")
   assert(T(f) == "Ouvrir Minage : 4 × " .. nom(3576), T(f))
+  assert(C(f) == "Ouvrir Minage", C(f))
   -- Le Minage ouvert, le jeu confirme : on fabrique les 4.
   faisable[3304] = 4
   f = ns.prochaineDuProjet(p, "Minage")
   assert(f.cle == 3304 and f.etat == "pret" and f.n == 4 and T(f) == "Fabriquer 4 × " .. nom(3576), T(f))
+  assert(C(f) == "Fabriquer 4", C(f))
   -- Les 4 barres d'étain arrivent : le bronze, 13 fontes de 2 barres.
   poser({ [2841] = 7, [2840] = 13, [3576] = 13 })
   faisable[2659] = 13
   f = ns.prochaineDuProjet(p, "Minage")
   assert(f.cle == 2659 and f.etat == "pret" and f.n == 13 and T(f) == "Fabriquer 26 × " .. nom(2841), T(f))
+  assert(f.id == 2841 and C(f) == "Fabriquer 26", C(f)) -- f.id : la case qui porte l'action
   -- Le bronze fondu : les Dory, mais le catalyseur manque (à acheter) ; rien n'est proposé.
   poser({ [2841] = 33 })
   f = ns.prochaineDuProjet(p, "Minage")
   assert(f.cle == 99101 and f.etat == "manque" and T(f) == "Il manque " .. nom(FLUX) .. " pour 4 × " .. nom(DORY), T(f))
+  assert(C(f) == "Il manque " .. nom(FLUX), C(f))
   -- Acheté : la Forge à ouvrir ; ouverte sans enclume, le jeu le dit ; avec, on fabrique.
   poser({ [2841] = 33, [FLUX] = 16 })
   f = ns.prochaineDuProjet(p, "Minage")
@@ -812,6 +816,7 @@ do
   requis = { { name = "Enclume", met = false } }
   f = ns.prochaineDuProjet(p, "Forge")
   assert(f.cle == 99101 and f.etat == "manque" and T(f) == "Il manque Enclume pour 4 × " .. nom(DORY), T(f))
+  assert(C(f) == "Il manque Enclume", C(f))
   requis, faisable[99101] = {}, 4
   f = ns.prochaineDuProjet(p, "Forge")
   assert(f.etat == "pret" and T(f) == "Fabriquer 4 × " .. nom(DORY), T(f))
@@ -820,19 +825,24 @@ do
   local fini
   f, fini = ns.prochaineDuProjet(p, "Forge")
   assert(f == nil and fini and T(f, fini) == "Tout est fabriqué", T(f, fini))
+  assert(ns.projetFini(ns.projetArbre(p)), "fini : la ligne du projet le dit")
   -- Sacs vides : rien de proposé, la première fabrication dit ce qui lui manque.
   poser({})
   f = ns.prochaineDuProjet(p, "Minage")
   assert(f.cle == 3304 and f.etat == "manque" and T(f) == "Il manque " .. nom(2771) .. " pour 16 × " .. nom(3576), T(f))
+  assert(not ns.projetFini(ns.projetArbre(p)), "pas fini")
+  assert(C({ etat = "inconnue", recette = {} }) == "Recette inconnue" and C({ etat = "manque", recette = {} }) == "Il manque un composant")
   -- Un projet vide : rien à fabriquer.
   f, fini = ns.prochaineDuProjet(Composants.NouveauProjet({ name = "Vide" }), nil)
   assert(f == nil and not fini and T(f, fini) == "Rien à fabriquer", T(f, fini))
+  assert(not ns.projetFini(ns.projetArbre(Composants.NouveauProjet({ name = "Vide 2" }))), "vide : pas « fini »")
   -- En cours : l'avancement, en objets.
   assert(T(nil, nil, { nom = "Barre de bronze", per = 2, n = 13, fait = 2 }) == "Barre de bronze 4/26…")
+  assert(C(nil, { nom = "Barre de bronze", per = 2, n = 13, fait = 2 }) == "4/26…")
   C_TradeSkillUI, C_Item.GetItemCount = nil, nil
   commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
 end
-print("Composants : Tout fabriquer, la prochaine fabrication du projet affiché OK")
+print("Composants : Tout fabriquer, la prochaine fabrication du projet affiché, sur sa case OK")
 
 -- L'infobulle des objets (#16) : « Utilisé dans » (les projets dont l'arbre le demande) et « Fabriqué par » (mes persos qui
 -- connaissent une recette qui le fabrique), rien pour un objet qui n'entre dans rien ; le cache suit les projets.
