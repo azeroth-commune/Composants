@@ -301,8 +301,9 @@ function ns.refreshNeeds()
   -- seul), la vue de sa phase prend la place.
   if ns.phase(p) ~= "reunir" then return ns.montrerVue() end
   local res = ns.besoinsArbre(p)
-  if reuni(p, res) or ns.finiEmplacement(p) then
-    ns.projetPhase(p, ns.finiEmplacement(p) and "fini" or "fabriquer")
+  local fini = ns.finiEmplacement(p) -- un seul appel au fournisseur
+  if fini or reuni(p, res) then
+    ns.projetPhase(p, fini and "fini" or "fabriquer")
     return ns.montrerVue()
   end
   local list, recipes = ns.orderNeeds(res)
