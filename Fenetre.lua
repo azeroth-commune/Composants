@@ -112,8 +112,9 @@ local function newOrderTag()
   local t = CreateFrame("Button", nil, content, "TooltipBackdropTemplate") -- le fond des bulles du jeu, bord à la couleur du métier
   t:SetFrameLevel(content:GetFrameLevel() + 5)
   t.text = t:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  t.text:SetPoint("CENTER")
-  t.text:SetWordWrap(false) -- tronquée au bord du dessin (plus bas), la bulle dit tout
+  t.text:SetPoint("LEFT", 6, 0)
+  t.text:SetJustifyH("LEFT")
+  t.text:SetWordWrap(false) -- tronquée au bord du dessin, par la fin (plus bas) ; la bulle dit tout
   t:SetScript("OnEnter", function(self)
     local o = self.order
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
