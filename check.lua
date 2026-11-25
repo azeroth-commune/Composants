@@ -839,6 +839,27 @@ do
   -- En cours : l'avancement, en objets.
   assert(T(nil, nil, { nom = "Barre de bronze", per = 2, n = 13, fait = 2 }) == "Barre de bronze 4/26…")
   assert(C(nil, { nom = "Barre de bronze", per = 2, n = 13, fait = 2 }) == "4/26…")
+  -- La barre en crans, un par fabrication ; au-delà de 20, une barre continue (les séparations ne se liraient plus).
+  assert(ns.crans(13) == 13 and ns.crans(20) == 20 and ns.crans(21) == 0, "13 fontes : 13 crans ; 21 : aucun")
+  -- Le remplissage : les fabrications finies, plus le cran en cours au rythme de l'incantation du jeu (UnitCastingInfo).
+  local A, e, gt = ns.avancement, { cle = 2659, n = 13, fait = 4 }, GetTime
+  local proche = function(a, b) return math.abs(a - b) < 1e-9 end
+  assert(proche(A(e), 4 / 13), "sans incantation : 4 crans pleins")
+  GetTime = function() return 10 end
+  UnitCastingInfo = function() return "Fonte du bronze", "", nil, 9000, 11000, true, 7, false, 2659 end
+  assert(proche(A(e), 4.5 / 13), "à mi-incantation : le 5e cran à moitié, " .. A(e) * 13)
+  issecretvalue = function(v) return v == 9000 end
+  assert(proche(A(e), 4 / 13), "début secret : le cran se remplit à la fin")
+  issecretvalue = function(v) return v == 2659 end
+  assert(proche(A(e), 4 / 13), "sort secret : idem")
+  issecretvalue = nil
+  UnitCastingInfo = function() return "Autre", "", nil, 9000, 11000, false, 7, false, 1234 end
+  assert(proche(A(e), 4 / 13), "une autre incantation : pas la nôtre")
+  UnitCastingInfo = function() return nil end
+  assert(proche(A(e), 4 / 13), "incantation absente")
+  e.fait = 13
+  assert(A(e) == 1, "tout fait : pleine")
+  GetTime, UnitCastingInfo = gt, nil
   C_TradeSkillUI, C_Item.GetItemCount = nil, nil
   commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
 end

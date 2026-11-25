@@ -96,8 +96,30 @@ test("Tout fabriquer : la prochaine fabrication sur sa case, sa fenêtre, l'avan
         ecouler(1)
         assertEquals("2/4…", b:GetText())
         assertTrue(b.fill:IsShown(), "barre de progression")
-        local w = b.fill:GetWidth() / (b:GetWidth() - 4)
+        local function rempli() return b.fill:GetWidth() / (b:GetWidth() - 4) end
+        local w = rempli()
         assertTrue(w > 0.4 and w < 0.6, "à moitié : " .. w)
+        -- 4 fontes : 4 crans, 3 séparations, à leur place.
+        local seps = 0
+        for _, s in ipairs(b.crans) do if s:IsShown() then seps = seps + 1 end end
+        assertEquals(3, seps, "4 crans")
+        local x = (b.crans[2]:GetLeft() - b:GetLeft() - 2) / (b:GetWidth() - 4)
+        assertTrue(x > 0.45 and x < 0.55, "la 2e séparation au milieu : " .. x)
+        -- L'incantation du jeu à moitié : le 3e cran à moitié (2,5 sur 4), image après image.
+        local uci, secret = UnitCastingInfo, issecretvalue
+        local cast = function() local t = GetTime() * 1000 return "Fonte", "", nil, t - 1000, t + 1000, true, 7, false, 3304 end
+        UnitCastingInfo = cast
+        b:GetScript("OnUpdate")(b, 0.016)
+        w = rempli()
+        UnitCastingInfo = uci
+        assertTrue(w > 0.6 and w < 0.65, "cran en cours à moitié : " .. w * 4)
+        -- Secrète : le cran attend la fin de l'incantation, sans erreur.
+        UnitCastingInfo, issecretvalue = cast, function() return true end
+        local okSecret, errSecret = pcall(b:GetScript("OnUpdate"), b, 0.016)
+        w = rempli()
+        UnitCastingInfo, issecretvalue = uci, secret
+        assertTrue(okSecret, tostring(errSecret))
+        assertTrue(w > 0.45 and w < 0.55, "secrète : 2 crans pleins, " .. w * 4)
         -- Les 4 fondues : les barres dans les sacs, tout est fait ; ça se lit sur la ligne du projet.
         sacs = { [3576] = 4 }
         fonte(2)

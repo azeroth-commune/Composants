@@ -252,6 +252,25 @@ local function enCombat() return InCombatLockdown and InCombatLockdown() end
 local function enIncantation() return UnitCastingInfo and UnitCastingInfo("player") ~= nil end
 local LAVANDE = { 0.66, 0.56, 1.00 }
 
+-- La barre du bouton en crans, un par fabrication. ponytail: au-delà de 20, sur 104 px, les séparations ne se lisent
+-- plus (moins de 5 px par cran) : une barre continue.
+function ns.crans(n) return n <= 20 and n or 0 end
+
+-- Le remplissage (0 à 1) : les fabrications finies, plus la part de l'incantation en cours, lue comme la barre
+-- d'incantation du jeu (UnitCastingInfo : début et fin en ms). Secrète, absente ou une autre : rien, le cran se remplit
+-- d'un coup à la fin (UNIT_SPELLCAST_SUCCEEDED). Aucune opération sur une valeur secrète : issecretvalue d'abord.
+function ns.avancement(e)
+  local part = 0
+  if UnitCastingInfo then
+    local _, _, _, debut, fin, _, _, _, sort = UnitCastingInfo("player")
+    local secret = issecretvalue and (issecretvalue(debut) or issecretvalue(fin) or issecretvalue(sort))
+    if not secret and type(debut) == "number" and type(fin) == "number" and sort == e.cle and fin > debut then
+      part = math.min(1, math.max(0, (GetTime() * 1000 - debut) / (fin - debut)))
+    end
+  end
+  return math.min(1, (e.fait + part) / e.n)
+end
+
 local function lancer()
   local f = tfF
   if encours or not (f and f.etat == "pret") then return end -- en cours, ou « Ouvrir » (la macro s'en charge)
@@ -273,10 +292,11 @@ local function construireTout() -- hors combat seulement : un bouton sécurisé 
   tf:SetAttribute("useOnKeyDown", GetCVarBool and GetCVarBool("ActionButtonUseKeyDown") or false)
   tf:SetMotionScriptsWhileDisabled(true) -- la bulle dit aussi pourquoi il est grisé
   tf:SetScript("PostClick", lancer)
-  -- L'avancement : le bouton se remplit de lavande, comme une barre d'incantation.
+  -- L'avancement : le bouton se remplit de lavande, cran par cran, comme une barre d'incantation.
   tf.fill = tf:CreateTexture(nil, "ARTWORK")
   tf.fill:SetPoint("TOPLEFT", 2, -2); tf.fill:SetPoint("BOTTOMLEFT", 2, 2)
   tf.fill:SetColorTexture(LAVANDE[1], LAVANDE[2], LAVANDE[3], 0.55)
+  tf.crans = {} -- les séparations entre crans, au-dessus du remplissage
   -- Le contour de la case : textures du bouton, ancrées à sa case (elles partent avec lui en combat).
   tf.contour = {}
   for i = 1, 4 do tf.contour[i] = tf:CreateTexture(nil, "OVERLAY") end
@@ -290,6 +310,31 @@ local function construireTout() -- hors combat seulement : un bouton sécurisé 
     GameTooltip:Show()
   end)
   tf:SetScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
+-- Le remplissage, à chaque image pendant la fabrication (OnUpdate) : le cran en cours suit l'incantation.
+local function peindre()
+  local x = encours and ns.avancement(encours) or 0
+  tf.fill:SetShown(x > 0)
+  if x > 0 then tf.fill:SetWidth(math.max(1, (tf:GetWidth() - 4) * x)) end
+end
+
+-- Les séparations des n crans de la fabrication en cours (aucune hors fabrication, ou au-delà de 20).
+local function crans(n)
+  local w = tf:GetWidth() - 4
+  for i = 1, math.max(n - 1, #tf.crans) do
+    local s = tf.crans[i]
+    if i < n then
+      if not s then
+        s = tf:CreateTexture(nil, "ARTWORK", nil, 7)
+        s:SetColorTexture(0, 0, 0, 0.8); s:SetWidth(1)
+        tf.crans[i] = s
+      end
+      s:ClearAllPoints()
+      s:SetPoint("TOPLEFT", tf, "TOPLEFT", 2 + w * i / n, -2); s:SetPoint("BOTTOMLEFT", tf, "BOTTOMLEFT", 2 + w * i / n, 2)
+      s:Show()
+    elseif s then s:Hide() end
+  end
 end
 
 local function contour(c, k, a)
@@ -339,8 +384,9 @@ function ns.rafraichirToutFabriquer(carteDe, ligne)
     pris = tf:GetWidth() + 10
   end
   tf:SetHeight(15)
-  tf.fill:SetShown(encours and encours.fait > 0 or false)
-  if encours then tf.fill:SetWidth(math.max(1, (tf:GetWidth() - 4) * encours.fait / encours.n)) end
+  crans(encours and ns.crans(encours.n) or 0)
+  peindre()
+  tf:SetScript("OnUpdate", encours and peindre or nil)
   tf:Show()
   return pris
 end
