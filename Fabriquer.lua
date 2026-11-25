@@ -326,10 +326,12 @@ end
 
 -- Appelé à la fin de chaque dessin de l'arbre (Fenetre.lua) : carteDe(id) = la case affichée de cet objet ; ligne = la
 -- ligne du projet, où va le bouton d'une fabrication sans case (un enchantement). Rend la largeur prise sur cette ligne.
+-- Seulement en phase Fabriquer (CONTEXT.md, Prochaine fabrication) : en Préparer, on choisit encore ses cases.
 function ns.rafraichirToutFabriquer(carteDe, ligne)
   if enCombat() then return 0 end -- en combat : refait à la sortie (PLAYER_REGEN_ENABLED)
   ns.fabricationEnCours()
-  local f = ns.prochaineDuProjet(ns.projetCourant(), ProfessionsFrame and ProfessionsFrame:IsShown() and metierOuvert() or nil)
+  local p = ns.projetCourant()
+  local f = ns.phase(p) == "fabriquer" and ns.prochaineDuProjet(p, ProfessionsFrame and ProfessionsFrame:IsShown() and metierOuvert() or nil) or nil
   tfF = f
   local id = encours and encours.id or f and f.id
   local case = id and carteDe(id)

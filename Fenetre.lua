@@ -1,4 +1,6 @@
--- Composants, la fenêtre (/composants) : un projet en haut (Projet.lua), son arbre par étages dessous ; avec Handshake, la
+-- Composants, la fenêtre (/composants) : la grande vue d'un projet, celle de ses phases Préparer, Fabriquer et Fini (la petite,
+-- Réunir, est dans Besoins.lua ; une seule des deux visible, ns.montrerVue) ; le fil « Préparer › Réunir › Fabriquer » en
+-- haut des deux. Un projet en haut (Projet.lua), son arbre par étages dessous ; avec Handshake, la
 -- liste de ses commandes entre les deux, « Commander » sur chaque bloc et Ctrl+clic « j'apporte » sur une case, dessinés
 -- ici en appelant l'API publique de Handshake (global Handshake, voir son README) : sans lui, rien de tout ça.
 -- Colonne 0 : ce qu'on suit. Étage 1 : ce qu'il faut pour le fabriquer. Étage 2 : ce qu'il faut pour ces
@@ -80,6 +82,50 @@ local choisie = {}
 local function laCommande()
   if choisie.p ~= projet() then choisie.p, choisie.i = projet(), 1 end
   return choisie.i
+end
+
+---------------------------------------------------------------------------------------------------
+-- Le fil (CONTEXT.md, Phase) « Préparer › Réunir › Fabriquer », en haut des deux vues : la phase du projet affiché se lit
+-- sur son bouton (lavande, surligné ; les autres en gris) ; clic = aller à cette phase (le Brouillon : lancé d'abord) et
+-- montrer sa vue. Fini : aucun surligné, la grande vue dit « Tout est fabriqué ». ns.fil(parent, x, y) le pose et rend la
+-- fonction qui le met à jour.
+local PHASES = {
+  { "preparer", "Préparer", "l'arbre et les choix de case ; Lancer passe à Réunir" },
+  { "reunir", "Réunir", "ses Besoins seuls ; tout dans les sacs, Fabriquer vient tout seul" },
+  { "fabriquer", "Fabriquer", "l'arbre se remplit, la prochaine fabrication sur sa case" },
+}
+function ns.fil(parent, x, y)
+  local bs = {}
+  for i, ph in ipairs(PHASES) do
+    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    b:SetSize(84, 20)
+    if i == 1 then b:SetPoint("TOPLEFT", x, y) else
+      local sep = parent:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+      sep:SetPoint("LEFT", bs[i - 1], "RIGHT", 4, 0)
+      sep:SetText("›")
+      b:SetPoint("LEFT", sep, "RIGHT", 4, 0)
+    end
+    b:SetScript("OnClick", function()
+      if not ns.allerPhase(projet(), ph[1]) then return print("Composants : le Brouillon est vide, rien à lancer.") end
+      ns.montrerVue()
+    end)
+    b:SetScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+      GameTooltip:AddLine(ph[2])
+      GameTooltip:AddLine(ph[3], 1, 1, 1, true)
+      if ns.phase(projet()) ~= ph[1] then GameTooltip:AddLine("Clic : y aller", 0.66, 0.56, 1) end
+      GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    bs[i] = b
+  end
+  return function()
+    local en = ns.phase(projet())
+    for i, ph in ipairs(PHASES) do
+      if ph[1] == en then bs[i]:SetText("|cffa98fff" .. ph[2] .. "|r"); bs[i]:LockHighlight()
+      else bs[i]:SetText("|cffbbbbbb" .. ph[2] .. "|r"); bs[i]:UnlockHighlight() end
+    end
+  end
 end
 
 ---------------------------------------------------------------------------------------------------
@@ -485,11 +531,12 @@ end
 
 local function refresh()
   if not (frame and frame:IsShown()) then return end
+  if ns.phase(projet()) == "reunir" then return ns.montrerVue() end -- la vue de Réunir, c'est la petite
   local res = ns.projetArbre(projet(), nil, ns.apportsHandshake(projet()))
+  ns.avancerPhase(projet(), res) -- Fabriquer → Fini, tout seul
   local roots, market, total, incomplete, g = res.roots, res.market, res.total, res.incomplete, ns.dessinArbre(res)
   frame.syncProjet()
   if frame.syncOrder then frame.syncOrder() end
-  if ns.refreshNeeds then ns.refreshNeeds() end -- un « + », un « – », une quantité : les Besoins suivent aussitôt
 
   -- Les étages s'étalent sur la largeur ; trop nombreux, le dessin rétrécit pour tenir (puis molette pour zoomer).
   local avail = scroll:GetWidth()
@@ -502,11 +549,11 @@ local function refresh()
 
   for _, h in ipairs(headers) do h:Hide() end
   if #roots == 0 then
-    header(1, 0, ns.estBrouillon(projet()) and "|cff999999Brouillon vide : Ctrl+clic droit sur un objet n'importe où l'y met ; « + » en fait un projet.|r"
+    header(1, 0, ns.estBrouillon(projet()) and "|cff999999Brouillon vide : Ctrl+clic droit sur un objet n'importe où l'y met ; Lancer en fait un projet.|r"
       or "|cff999999Tape un nom (suggestions) ou dépose un objet, puis Ajouter ; Ctrl+clic droit sur un objet le met au Brouillon.|r")
   else
     local o, cost = projet(), ns.moneyShort(total) .. (incomplete and " |cffe64d4d+ ?|r" or "")
-    local fini = ns.projetFini(res) and " · |cff59cc73Tout est fabriqué|r" or "" -- la fin de « Tout fabriquer » (Fabriquer.lua)
+    local fini = ns.phase(o) == "fini" and " · |cff59cc73Tout est fabriqué|r" or "" -- la phase Fini
     if replying() then -- ma part, mon prix, ce qui reste pour mon travail
       local price = H().Commande(o).tip or 0
       header(1, 0, ("Ma part · %s · mon prix %s · travail %s"):format(cost, ns.moneyShort(price), ns.moneySigned(price - total)) .. fini)
@@ -545,16 +592,16 @@ local function refresh()
   local pris = ns.rafraichirToutFabriquer(function(id)
     for i = 1, #g.nodes do if cards[i].node.id == id then return cards[i] end end
   end, headers[1])
-  -- Projet fini (« Tout est fabriqué ») : « Clore le projet » au bout de sa ligne, sans Maj (plus rien à perdre) ; le
+  -- Phase Fini (« Tout est fabriqué ») : « Clore le projet » au bout de sa ligne, sans Maj (plus rien à perdre) ; le
   -- « Supprimer ce projet (Maj+clic) » du menu Projets reste pour les autres cas.
-  local clore = #roots > 0 and not ns.estBrouillon(projet()) and ns.projetFini(res)
+  local clore = ns.phase(projet()) == "fini"
   if clore and not frame.clore then
     local b = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
     b:SetNormalFontObject(GameFontNormalSmall); b:SetHighlightFontObject(GameFontHighlightSmall)
     b:SetText("Clore le projet"); b:SetSize(b:GetTextWidth() + 20, 18)
     b:SetScript("OnClick", function()
       ns.supprimerProjet() -- signalé : Handshake efface ses commandes pas encore parties, jamais un contrat
-      refresh()
+      ns.montrerVue() -- le projet suivant, dans la vue de sa phase
     end)
     b:SetScript("OnEnter", function(self)
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -735,6 +782,27 @@ local function refresh()
 end
 ns.refreshCraftWindow = refresh
 
+-- Une seule vue visible (CONTEXT.md, Phase) : celle de la phase du projet affiché, après ce qui se fait tout seul
+-- (ns.avancerPhase) ; Réunir = la petite (les Besoins), les autres = la grande. Celle qui s'ouvre prend le coin de celle qui
+-- se ferme. Tout ce qui ouvre un projet ou change sa phase passe par ici.
+function ns.montrerVue()
+  if not frame then build() end
+  local p = projet()
+  ns.avancerPhase(p)
+  local petite = ns.besoinsFenetre()
+  local vue, autre = frame, petite
+  if ns.phase(p) == "reunir" then vue, autre = petite, frame end
+  if autre:IsShown() then
+    local x, y = autre:GetLeft(), autre:GetTop()
+    autre:Hide()
+    if x and y then vue:ClearAllPoints(); vue:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y) end
+  end
+  if vue == frame then frame:Show(); refresh()
+  elseif petite:IsShown() then ns.refreshNeeds()
+  else petite:Show() end -- (son OnShow la remplit)
+  ns.besoinsChanges() -- la liste d'Auctionator suit le projet affiché
+end
+
 ---------------------------------------------------------------------------------------------------
 local function track(id, qty)
   if not id then return end
@@ -751,7 +819,7 @@ local function searchBox(qty) return AzerothCommune.RechercheObjets(frame, qty, 
 -- l'artisan et l'offre de la commande choisie, la liste des commandes du projet avec leur état (lu dans leur contrat par
 -- Handshake), « Préparer la demande » (ou « Contre-proposer » dans une Réponse, « Voir la demande » une fois partie),
 -- « Importer » une liste reçue, « En clair ». Tout passe par l'API publique de Handshake.
-function ns.barreCommandes(frame, button, input, label, orderName, needsB)
+function ns.barreCommandes(frame, button, input, label, orderName, lancerB)
   local hs = H()
   local playerL = label("Joueur", orderName, 16)
   local player = input(120, function(v) hs.Artisan(projet(), v, laCommande()); frame.syncOrder() end)
@@ -777,7 +845,7 @@ function ns.barreCommandes(frame, button, input, label, orderName, needsB)
     root:CreateButton("Envoyer la commande en clair", function() hs.EnClair(projet(), laCommande()) end)
     root:CreateButton("Annoncer dans le Commerce", function() hs.Annoncer(projet(), laCommande()) end)
   end)
-  plusB:SetPoint("RIGHT", needsB, "LEFT", -6, 0)
+  plusB:SetPoint("RIGHT", lancerB, "LEFT", -6, 0)
   local contractB = button("Préparer la demande", 150, function()
     hs.Preparer(projet(), laCommande())
     frame.syncOrder()
@@ -877,29 +945,26 @@ local function build()
   -- ui-addon : pas de < > qui font défiler), puis son nom, qu'on renomme sur place. Le Brouillon ne se renomme pas ; son
   -- menu propose d'en faire un vrai projet, ou de le vider.
   local function surBrouillon() return ns.estBrouillon(projet()) end
+  frame.syncFil = ns.fil(frame, 150, -9) -- le fil, dans la barre de titre
   local projetsB = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
   projetsB:SetWidth(110)
   projetsB:SetPoint("TOPLEFT", 14, -40)
   projetsB:OverrideText("Projets")
   projetsB:SetupMenu(function(_, root)
-    local function ouvrir(id) ns.ouvrirProjet(id); refresh() end
+    local function ouvrir(id) ns.ouvrirProjet(id); ns.montrerVue() end -- la vue de sa phase
     for _, p in ipairs(ns.db().projets) do
       root:CreateRadio(p.name or "?", function(id) return projet().id == id end, ouvrir, p.id)
     end
-    root:CreateRadio("Brouillon", surBrouillon, function() ns.ouvrirBrouillon(); refresh() end)
+    root:CreateRadio("Brouillon", surBrouillon, function() ns.ouvrirBrouillon(); ns.montrerVue() end)
     root:CreateDivider()
-    if surBrouillon() then
-      root:CreateButton("Faire un projet du Brouillon", function()
-        if not ns.brouillonEnProjet() then return print("Composants : le Brouillon est vide.") end
-        refresh()
-      end)
+    if surBrouillon() then -- Lancer en fait un projet
       root:CreateButton("Vider le Brouillon", function() ns.viderBrouillon(); refresh() end)
     else
       root:CreateButton("Nouveau projet", function() ns.nouveauProjet(); refresh() end)
       root:CreateButton("Supprimer ce projet (Maj+clic)", function()
         if not IsShiftKeyDown() then return print("Composants : Maj+clic sur « Supprimer ce projet » pour l'effacer.") end
         ns.supprimerProjet() -- signalé : Handshake efface ses commandes pas encore parties, jamais un contrat
-        refresh()
+        ns.montrerVue()
       end)
     end
   end)
@@ -910,7 +975,9 @@ local function build()
     local b = surBrouillon()
     if not orderName:HasFocus() then orderName:SetText(b and "Brouillon" or projet().name or "") end
     orderName:SetEnabled(not b)
-    if frame.needsB then frame.needsB:SetText(ns.dansBesoins(projet()) and "Besoins" or "Mettre dans les Besoins") end
+    frame.syncFil()
+    frame.lancerB:SetShown(ns.phase(projet()) == "preparer")
+    frame.lancerB:SetEnabled(#projet().lines > 0)
   end
 
   -- Ligne d'ajout : déposer un objet sur la case, ou taper son nom.
@@ -933,21 +1000,26 @@ local function build()
   add:SetPoint("LEFT", qty, "RIGHT", 8, 0)
   add:SetText("Ajouter")
   add:SetScript("OnClick", submit)
-  -- Les Besoins, un seul bouton (retour de Virgile : un bouton et une case, c'était bizarre). Le projet affiché n'y est pas :
-  -- « Mettre dans les Besoins » l'y met et ouvre la fenêtre ; il y est (ou c'est le Brouillon, toujours dedans) :
-  -- « Besoins » ouvre ou ferme la fenêtre. On retire un projet en cliquant sur son nom dans la fenêtre des Besoins.
-  local needsB = button("Besoins", 170, function()
-    local p = projet()
-    if not ns.dansBesoins(p) then
-      ns.besoinsMettre(p)
-      ns.ouvrirBesoins()
-      frame.syncProjet()
-    else
-      ns.toggleNeeds()
-    end
+  -- Lancer (CONTEXT.md) : le seul bouton d'action de Préparer ; le projet passe à Réunir, la petite vue (ses Besoins) prend
+  -- la place de la grande. Sur le Brouillon, un vrai projet naît (le Brouillon se vide). Grisé sans ligne.
+  local lancerB = button("Lancer", 120, function()
+    if not ns.lancer(projet()) then return end
+    ns.montrerVue()
   end)
-  needsB:SetPoint("TOPRIGHT", -14, -75)
-  frame.needsB = needsB
+  lancerB:SetPoint("TOPRIGHT", -14, -75)
+  lancerB:SetMotionScriptsWhileDisabled(true)
+  lancerB:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+    GameTooltip:AddLine("Lancer")
+    if #projet().lines == 0 then GameTooltip:AddLine("Rien à lancer : ajoute un objet", 0.9, 0.3, 0.3)
+    else
+      GameTooltip:AddLine("Le projet passe à Réunir : ses Besoins seuls ; tout dans les sacs, Fabriquer vient tout seul.", 1, 1, 1, true)
+      if surBrouillon() then GameTooltip:AddLine("Le Brouillon devient un projet, un Brouillon vide le remplace.", 0.6, 0.6, 0.6, true) end
+    end
+    GameTooltip:Show()
+  end)
+  lancerB:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  frame.lancerB = lancerB
   local function dropped()
     local kind, id = GetCursorInfo()
     if kind == "item" then
@@ -958,7 +1030,7 @@ local function build()
   slot:SetScript("OnReceiveDrag", dropped)
   slot:SetScript("OnClick", dropped)
 
-  if hs then ns.barreCommandes(frame, button, input, label, orderName, needsB) end
+  if hs then ns.barreCommandes(frame, button, input, label, orderName, lancerB) end
 
   -- Options, sous la ligne d'ajout
   local labelsOpt = { { "bags", "Déduire mes sacs" }, { "bank", "ma banque" }, { "alts", "mes autres persos" }, { "unlearned", "recettes pas apprises" } }
@@ -1050,10 +1122,11 @@ local function build()
   frame:SetScript("OnShow", function() C_Timer.After(0, refresh) end) -- la largeur du défilement n'est connue qu'affichée
 end
 
+-- La fenêtre : l'objet id (facultatif) entre dans le projet affiché, puis la vue de sa phase.
 function ns.openCraftWindow(id, qty)
   if not frame then build() end
-  frame:Show()
-  if id then track(id, qty or 1) else refresh() end
+  if id then track(id, qty or 1) end
+  ns.montrerVue()
 end
 -- Bouton de minicarte et entrée des options communs d'Azeroth Commune : clic ou ligne du menu = cette fenêtre.
 AzerothCommune.Regrouper({ nom = "Composants", dossier = "Composants", icone = "Interface\\Icons\\Trade_Engineering",
