@@ -219,3 +219,34 @@ test("Besoins : un bloc confié en sort, ce qu'on lui donne y reste", function()
     end, { aDonner = function() return { [parti] = true } end })
     Composants.Supprimer(p.id)
 end)
+
+test("Phases : le fournisseur refuse Lancer (le bouton le dit, le fil ne le contourne pas) ; fini décide seul de Fini", function()
+    local refus, fini = "à signer", nil
+    avecFaux({}, nil, function()
+        SlashCmdList.COMPOSANTS("demo ceinture")
+        local p = projet()
+        local lancer = ComposantsFrame.lancerB
+        assertEquals("Lancer (à signer)", lancer:GetText())
+        assertTrue(not lancer:IsEnabled(), "refusé : grisé")
+        lancer:Click()
+        assertNil(p.phase, "refusé : on reste en Préparer")
+        tous(ComposantsFrame, function(c) -- le fil : son texte en couleur
+            return c:GetObjectType() == "Button" and c:IsVisible() and (c:GetText() or ""):find("Réunir", 1, true) ~= nil
+        end)[1]:Click()
+        assertNil(p.phase, "le fil ne contourne pas le refus")
+        refus = nil
+        Composants.Rafraichir()
+        assertEquals("Lancer", lancer:GetText())
+        lancer:Click()
+        assertEquals("reunir", p.phase, "permis : Réunir")
+        fini = false
+        Composants.Rafraichir()
+        assertEquals("reunir", p.phase)
+        fini = true
+        Composants.Rafraichir()
+        assertEquals("fini", p.phase, "fini vrai : Fini depuis Réunir, sans l'arbre")
+        assertTrue(ComposantsFrame:IsShown(), "la grande vue")
+        assertNotNil(bouton("Clore"), "Clore")
+        Composants.Supprimer(p.id)
+    end, { lancer = function() return refus end, fini = function() return fini end })
+end)

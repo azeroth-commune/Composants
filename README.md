@@ -8,7 +8,8 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 - **Seul**, Composants ne montre rien qui concerne un autre joueur (ni contrat, ni artisan d'en face) et ne connaît pas
   Handshake. Il offre l'**emplacement du bloc** (`Composants.Emplacements`, plus bas) : un autre add-on y dessine dans
   chaque bloc de l'arbre et sur la ligne du projet, et un bloc qu'il dit confié se réduit à une seule case ; dans les
-  Besoins, il ajoute ses lignes, et Réunir → Fabriquer et Fini attendent qu'il dise ce qu'il a pris en charge arrivé. Un
+  Besoins, il ajoute ses lignes, et Réunir → Fabriquer et Fini attendent qu'il dise ce qu'il a pris en charge arrivé ; il
+  peut refuser Lancer (« Lancer (<raison>) ») et dire lui-même quand le projet est Fini. Un
   bloc confié sort des Besoins, sauf ce que le joueur lui donne. Handshake s'y branche quand il est là (« Commander » un
   bloc, la case « Contrat n°12 · artisan · état », son panneau ; « Contrat n°12 · à recevoir » dans les Besoins).
 - **Pour le joueur** : `/composants` (ou `/compo`) ouvre la fenêtre ; `/composants <objet> [quantité] [tout]` l'ajoute au
@@ -105,6 +106,11 @@ local avant = C.Emplacements({
   besoins = function(zone, p) return hauteur end, -- ses lignes dans zone (sous celles des Besoins, large d'une ligne)
   clos = function(p) return vrai end,          -- tout ce qu'il a pris en charge est arrivé : Réunir → Fabriquer et Fini l'attendent
   aDonner = function(p) return { [itemID] = true } end, -- ce que le joueur donne à un bloc confié : des lignes des Besoins
+  -- Les phases (facultatif)
+  lancer = function(p) return raison end,      -- une chaîne : Lancer refusé, « Lancer (<raison>) » grisé, le fil reste en
+                                               --   Préparer ; nil : permis
+  fini = function(p) return vrai end,          -- nil : la règle de Composants (plus rien à fabriquer, et clos) ; true ou
+                                               --   false : lui seul décide, sans l'arbre (true : Réunir ou Fabriquer → Fini)
 })
 ```
 

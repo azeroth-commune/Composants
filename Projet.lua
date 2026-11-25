@@ -73,9 +73,12 @@ local function enPreparer(p) p.phase = nil end
 
 -- Lancer (CONTEXT.md) : le projet passe en Réunir et le renvoie. Sur le Brouillon : un vrai projet en Réunir, avec ses lignes
 -- et ses choix de case, nommé d'après sa première ligne, et un Brouillon vide le remplace ; nil si le Brouillon est vide.
+-- Le fournisseur de l'emplacement peut le refuser (ns.refusLancer) : nil et sa raison, le projet reste en Préparer.
 function ns.lancer(p)
+  local refus = ns.refusLancer(p)
+  if refus then return nil, refus end
   if not ns.estBrouillon(p) then ns.projetPhase(p, "reunir") return p end
-  if #p.lines == 0 then return nil end
+  if #p.lines == 0 then return nil, "le Brouillon est vide, rien à lancer" end
   local l = p.lines[1]
   local it = l.id and ns.items()[l.id] -- le nom du catalogue d'abord : le lien d'un objet pas en cache dit « Unknown »
   local nom = it and it.name or l.id and ns.itemLabel(l.id) or (ns.recipes()[l.recette] or {}).name
@@ -84,22 +87,30 @@ function ns.lancer(p)
   return q
 end
 
--- Le fil : le projet à cette phase, et le projet (le Brouillon : lancé d'abord, nil s'il est vide).
+-- Le fil : le projet à cette phase, et le projet. Quitter Préparer, c'est lancer d'abord (le Brouillon devient un projet) :
+-- refusé (Brouillon vide, ou le fournisseur de l'emplacement), nil et la raison, rien ne bouge.
 function ns.allerPhase(p, phase)
-  if ns.estBrouillon(p) and phase ~= "preparer" then p = ns.lancer(p) end
-  if p then ns.projetPhase(p, phase) end
+  if phase ~= "preparer" and ns.phase(p) == "preparer" then
+    local q, raison = ns.lancer(p)
+    if not q then return nil, raison end
+    p = q
+  end
+  ns.projetPhase(p, phase)
   return p
 end
 
 -- Ce qui se fait tout seul : Réunir → Fabriquer quand tout est réuni (ns.toutReuni, Besoins.lua), Fabriquer → Fini quand il
 -- n'y a plus rien à fabriquer (ns.projetFini, Fabriquer.lua ; res = l'arbre du projet s'il est déjà calculé) ; les deux
--- attendent aussi ce que le fournisseur de l'emplacement a pris en charge (ns.closEmplacement). Rend true si la phase a
--- changé.
+-- attendent aussi ce que le fournisseur de l'emplacement a pris en charge (ns.closEmplacement). Si le fournisseur dit Fini
+-- lui-même (ns.finiEmplacement : vrai ou faux), lui seul décide de Fini, sans l'arbre : vrai, un projet lancé (Réunir ou
+-- Fabriquer) passe en Fini. Rend true si la phase a changé.
 function ns.avancerPhase(p, res)
   if ns.estBrouillon(p) then return false end
-  local avant = ns.phase(p)
+  local avant, fini = ns.phase(p), ns.finiEmplacement(p)
+  if fini and (avant == "reunir" or avant == "fabriquer") then ns.projetPhase(p, "fini") return true end
   if avant == "reunir" and ns.toutReuni(p) then ns.projetPhase(p, "fabriquer") end
-  if ns.phase(p) == "fabriquer" and ns.closEmplacement(p) and ns.projetFini(res or ns.projetArbre(p, nil, ns.apportsEmplacement(p))) then
+  if fini == nil and ns.phase(p) == "fabriquer" and ns.closEmplacement(p)
+    and ns.projetFini(res or ns.projetArbre(p, nil, ns.apportsEmplacement(p))) then
     ns.projetPhase(p, "fini")
   end
   return ns.phase(p) ~= avant
