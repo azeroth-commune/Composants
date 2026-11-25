@@ -277,6 +277,12 @@ test("une ligne fabrication compte ses fabrications faites, même lancées par l
         assertEquals(1, p.faites[3304])
         assertTrue(b:GetText():find(" ×3$") ~= nil, "3 à faire : " .. b:GetText())
         assertEquals(3, cible().node.qty, "la case : 3 barres à faire")
+        -- Le temps de fabrication suit : 3 fontes × 3 s (Fonte de l'étain, réserve du socle).
+        local projetL
+        for _, r in ipairs({ cible():GetParent():GetRegions() }) do
+            if r.GetText and r:IsShown() and (r:GetText() or ""):find("^Projet · ") then projetL = r:GetText() end
+        end
+        assertTrue(projetL and projetL:find(" · 9 s de fabrication", 1, true) ~= nil, tostring(projetL))
         -- Par le bouton d'action (clic droit : les 3) : chaque fonte réussie compte.
         b:Click("RightButton")
         FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "fonte", 3304)
