@@ -4,16 +4,16 @@
 -- ses lignes (projet tenu). Toute modification d'un projet passe par ce module, qui la signale (ns.quandChange) ; la
 -- fenêtre (Fenetre.lua) ne fait que dessiner.
 -- Enregistrés dans ComposantsDB.projets[i] = { id (son identité), name, lines = { { id, qty } ou { recette, fois } (une
---   fabrication, CONTEXT.md) }, choix = { [id] =
---   "fabriquer" | "acheter" }, tenu (la raison de celui qui tient ses lignes), created } ;
+--   fabrication, CONTEXT.md) }, choix = { [id] = "fabriquer" | "acheter" }, tenu (la raison de celui qui tient ses lignes),
+--   phase ("reunir", "fabriquer" ou "fini" ; nil = Préparer, ainsi que tout projet d'avant les phases), created } ;
 --   ComposantsDB.courant = le rang du projet affiché ; ComposantsDB.brouillon = le Brouillon (un projet hors de la liste).
 local _, ns = ...
 
 local db = function() return ns.db() end
 local surBrouillon = false -- le Brouillon est-il affiché (au lieu du projet de rang ComposantsDB.courant) ?
 
--- « Ce projet a changé » : fn(p, quoi) après chaque modification, quoi = "nouveau", "lignes", "choix", "nom", "tenu" ou
--- "supprime" (p : le projet qui vient de partir). Un rappel qui plante ne prive pas les autres.
+-- « Ce projet a changé » : fn(p, quoi) après chaque modification, quoi = "nouveau", "lignes", "choix", "nom", "tenu",
+-- "phase" ou "supprime" (p : le projet qui vient de partir). Un rappel qui plante ne prive pas les autres.
 local rappels = {}
 function ns.quandChange(fn) rappels[#rappels + 1] = fn end
 local function signaler(p, quoi)
@@ -57,13 +57,51 @@ function ns.viderBrouillon()
   b.lines, b.choix = {}, nil
   signaler(b, "lignes")
 end
--- « + » : un vrai projet avec les lignes et les choix de case du Brouillon, qui se vide ; nil si le Brouillon est vide.
-function ns.brouillonEnProjet()
-  local b = ns.brouillon()
-  if #b.lines == 0 then return nil end
-  local p = ns.nouveauProjet({ lines = b.lines, choix = b.choix })
+
+---------------------------------------------------------------------------------------------------
+-- Les phases (CONTEXT.md, Phase) : Préparer (nil) → Réunir → Fabriquer → Fini. Lancer fait passer de Préparer à Réunir ;
+-- Réunir → Fabriquer et Fabriquer → Fini se font tout seuls (ns.avancerPhase), jamais de retour en arrière tout seul ; le
+-- fil va à la main à n'importe quelle phase (ns.allerPhase). Tout changement de lignes ou de choix de case remet en
+-- Préparer (enPreparer, sans signal à part : celui des lignes ou du choix suffit). Le Brouillon est toujours en Préparer.
+function ns.phase(p) return p.phase or "preparer" end
+function ns.projetPhase(p, phase)
+  if ns.phase(p) == phase then return end
+  p.phase = phase ~= "preparer" and phase or nil
+  signaler(p, "phase")
+end
+local function enPreparer(p) p.phase = nil end
+
+-- Lancer (CONTEXT.md) : le projet passe en Réunir et le renvoie. Sur le Brouillon : un vrai projet en Réunir, avec ses lignes
+-- et ses choix de case, nommé d'après sa première ligne, et un Brouillon vide le remplace ; nil si le Brouillon est vide.
+function ns.lancer(p)
+  if not ns.estBrouillon(p) then ns.projetPhase(p, "reunir") return p end
+  if #p.lines == 0 then return nil end
+  local l = p.lines[1]
+  local it = l.id and ns.items()[l.id] -- le nom du catalogue d'abord : le lien d'un objet pas en cache dit « Unknown »
+  local nom = it and it.name or l.id and ns.itemLabel(l.id) or (ns.recipes()[l.recette] or {}).name
+  local q = ns.nouveauProjet({ name = nom and (nom:match("%[(.-)%]") or nom), lines = p.lines, choix = p.choix, phase = "reunir" })
   ns.viderBrouillon()
+  return q
+end
+
+-- Le fil : le projet à cette phase, et le projet (le Brouillon : lancé d'abord, nil s'il est vide).
+function ns.allerPhase(p, phase)
+  if ns.estBrouillon(p) and phase ~= "preparer" then p = ns.lancer(p) end
+  if p then ns.projetPhase(p, phase) end
   return p
+end
+
+-- Ce qui se fait tout seul : Réunir → Fabriquer quand tout est réuni (ns.toutReuni, Besoins.lua), Fabriquer → Fini quand il
+-- n'y a plus rien à fabriquer (ns.projetFini, Fabriquer.lua ; res = l'arbre du projet s'il est déjà calculé). Rend true si
+-- la phase a changé.
+function ns.avancerPhase(p, res)
+  if ns.estBrouillon(p) then return false end
+  local avant = ns.phase(p)
+  if avant == "reunir" and ns.toutReuni(p) then ns.projetPhase(p, "fabriquer") end
+  if ns.phase(p) == "fabriquer" and ns.projetFini(res or ns.projetArbre(p, nil, ns.apportsHandshake(p))) then
+    ns.projetPhase(p, "fini")
+  end
+  return ns.phase(p) ~= avant
 end
 
 function ns.projetCourant()
@@ -99,13 +137,13 @@ end
 -- Projet tenu (CONTEXT.md) : un autre add-on prend les lignes du projet (lignes : les nouvelles, sinon
 -- celles qu'il a) en donnant une raison ; ajouter, retirer une ligne ou changer une quantité sont alors refusés avec
 -- cette raison telle quelle, les choix de case restent libres. Le projet ne sait pas pourquoi il est tenu ; raison nil :
--- il est rendu.
+-- il est rendu. De nouvelles lignes (une tranche recalculée) le remettent en Préparer ; le rendre ne change pas sa phase.
 function ns.projetTenir(p, raison, lignes)
   p.tenu = raison
   -- le perso depuis lequel il est tenu (Maîtrise : sa tranche ; Handshake : sa Réponse) : « Fabriquer » ne propose que ceux
   -- du perso connecté ; nil pour un projet tenu avant cette note (proposé à tous jusqu'au prochain « Mettre à jour »)
   p.tenuPar = raison and UnitGUID("player") or nil
-  if lignes then p.lines = lignes end
+  if lignes then p.lines = lignes; enPreparer(p) end
   signaler(p, "tenu")
 end
 
@@ -120,9 +158,10 @@ function ns.projetAjouter(p, id, qty)
   local ok, raison = ns.projetPeut(p, "lignes")
   if not ok then return false, raison end
   for _, l in ipairs(p.lines) do
-    if l.id == id then l.qty = qty; signaler(p, "lignes") return true end
+    if l.id == id then l.qty = qty; enPreparer(p); signaler(p, "lignes") return true end
   end
   p.lines[#p.lines + 1] = { id = id, qty = qty }
+  enPreparer(p)
   signaler(p, "lignes")
   return true
 end
@@ -132,6 +171,7 @@ function ns.projetQuantite(p, i, qty)
   if not ok then return false, raison end
   if not p.lines[i] then return false, "cette ligne n'existe pas" end
   if qty and qty >= 1 then p.lines[i][p.lines[i].recette and "fois" or "qty"] = math.min(qty, 9999) end -- fabrication : fois
+  enPreparer(p)
   signaler(p, "lignes")
   return true
 end
@@ -140,6 +180,7 @@ function ns.projetRetirer(p, i)
   local ok, raison = ns.projetPeut(p, "lignes")
   if not ok then return false, raison end
   table.remove(p.lines, i)
+  enPreparer(p)
   signaler(p, "lignes")
   return true
 end
@@ -156,6 +197,7 @@ function ns.projetChoix(p, id, choix)
   p.choix = p.choix or {}
   p.choix[id] = choix
   if not next(p.choix) then p.choix = nil end
+  enPreparer(p)
   signaler(p, "choix")
   return true
 end
@@ -381,33 +423,23 @@ local function valeurHV(roots, market, total, incomplete)
   return valeur, not incomplete and math.floor(valeur * (1 - PART_HV)) - depot - total or nil
 end
 
--- L'arbre de plusieurs projets enchaînés (les Besoins) : leurs lignes l'une après l'autre sur UN stock, chaque projet
--- avec SES choix de case et ses apports (apportsDe[p], facultatif), puis les cases et les blocs. res.roots[i] : la ligne i,
--- dans l'ordre des projets ; res.projets : les projets.
-function ns.arbreDe(projets, opts, apportsDe)
+-- L'arbre d'un projet, comme s'il était seul (tout le stock pour lui, ses lignes l'une après l'autre sur ce stock). p : un
+-- projet, ou toute table { lines, choix } (Handshake y passe la part d'une commande). opts : options de stock et de recettes
+-- (celles de la fenêtre par défaut). apports (facultatif) = { [id] = true }, les cases qu'une commande Handshake apporte :
+-- elles sortent de l'arbre, le projet ne les garde pas.
+-- Renvoie { roots, cases, caseDe, liens, blocs, blocDe, livraisons, total, incomplete, market, valeur, rapporte }.
+function ns.projetArbre(p, opts, apports)
   local roots, market, stock, vendors, total, incomplete = {}, nil, nil, nil, 0, false
-  for _, p in ipairs(projets) do
-    for _, l in ipairs(p.lines) do -- les prix marchands lus une fois pour tout le calcul
-      local i = #roots + 1
-      roots[i], market, stock, vendors = ns.craftPlan(l, opts or db().options, stock, apportsDe and apportsDe[p], p.choix, vendors)
-      total = total + (roots[i].cost or 0)
-      incomplete = incomplete or roots[i].incomplete or not roots[i].cost
-    end
+  for i, l in ipairs(p.lines) do -- les prix marchands lus une fois pour tout le calcul
+    roots[i], market, stock, vendors = ns.craftPlan(l, opts or db().options, stock, apports, p.choix, vendors)
+    total = total + (roots[i].cost or 0)
+    incomplete = incomplete or roots[i].incomplete or not roots[i].cost
   end
-  local res = cases(roots, #projets == 1 and projets[1].choix or {}) -- n.choix : le choix de case d'un projet seul
-  res.roots, res.total, res.incomplete, res.market, res.projets = roots, total, incomplete, market, projets
+  local res = cases(roots, p.choix or {})
+  res.roots, res.total, res.incomplete, res.market = roots, total, incomplete, market
   res.valeur, res.rapporte = valeurHV(roots, market, total, incomplete)
   blocs(res, ns.crafters())
   return res
-end
-
--- L'arbre d'un projet, comme s'il était seul (tout le stock pour lui). p : un projet, ou toute table { lines, choix }
--- (Handshake y passe la part d'une commande). opts : options de stock et de recettes (celles de la fenêtre par défaut).
--- apports (facultatif) = { [id] = true }, les cases qu'une commande Handshake apporte : elles sortent de l'arbre, le projet
--- ne les garde pas.
--- Renvoie { roots, cases, caseDe, liens, blocs, blocDe, livraisons, total, incomplete, market, valeur, rapporte }.
-function ns.projetArbre(p, opts, apports)
-  return ns.arbreDe({ p }, opts, apports and { [p] = apports })
 end
 
 ---------------------------------------------------------------------------------------------------

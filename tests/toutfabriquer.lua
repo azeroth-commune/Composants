@@ -56,8 +56,17 @@ test("Tout fabriquer : la prochaine fabrication sur sa case, sa fenêtre, l'avan
             if r.GetText and r:IsShown() and (r:GetText() or ""):find(motif) then return r end
         end
     end
+    -- Le bouton du fil « Fabriquer » de la grande vue (la prochaine fabrication n'est proposée qu'en Fabriquer).
+    local function filFabriquer()
+        for _, c in ipairs({ ComposantsFrame:GetChildren() }) do
+            if c:GetObjectType() == "Button" and ((c:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) == "Fabriquer" then return c end
+        end
+    end
     local ok, err = pcall(function()
         Composants.Ouvrir(p.id)
+        ecouler(1)
+        assertTrue(not (ComposantsToutFabriquer and ComposantsToutFabriquer:IsShown()), "en Préparer : pas de prochaine fabrication")
+        filFabriquer():Click()
         ecouler(1)
         local b = ComposantsToutFabriquer
         assertNotNil(b, "le bouton de la prochaine fabrication")
@@ -127,9 +136,14 @@ test("Tout fabriquer : la prochaine fabrication sur sa case, sa fenêtre, l'avan
         ecouler(1)
         assertTrue(not b:IsShown(), "fini : plus d'action")
         assertNotNil(ligne(content, "Tout est fabriqué"), "« Tout est fabriqué » sur la ligne du projet")
-        -- Interrompue : le bouton revient à la fabrication.
+        assertEquals("fini", p.phase, "phase Fini")
+        -- Fini est gardé (des barres vendues ne rouvrent rien) ; le fil ramène en Fabriquer, le bouton revient.
         sacs = { [2771] = 4 }
         FireEvent("BAG_UPDATE_DELAYED")
+        ecouler(1)
+        assertEquals("fini", p.phase, "Fini gardé")
+        assertTrue(not b:IsShown(), "Fini : pas d'action")
+        filFabriquer():Click()
         ecouler(1)
         assertTrue(b:IsShown() and b:GetParent() == caseDe(3576, b), "de retour sur la case")
         b:Click("LeftButton")

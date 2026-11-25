@@ -33,6 +33,13 @@ end
 -- Les cases dessinées : une par objet (c.node).
 local function cases() return tous(ComposantsFrame, function(c) return c.node ~= nil and c:IsShown() end) end
 local function projet() return ComposantsDB.projets[ComposantsDB.courant] end
+-- Un bouton du fil « Préparer › Réunir › Fabriquer » d'une vue (son texte sans couleur), et la phase en cours qui s'y lit.
+local function fil(f, nom)
+    return tous(f, function(c)
+        return c:GetObjectType() == "Button" and c:IsVisible() and ((c:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) == nom
+    end)[1]
+end
+local function enCours(b) return (b:GetText() or ""):find("|cffa98fff", 1, true) ~= nil end -- lavande
 
 -- Personne n'a de recette ici : « recettes pas apprises » cochée, toutes comptent et les blocs se dessinent. L'option est
 -- rendue telle quelle, même si une vérification échoue.
@@ -163,7 +170,7 @@ test("Ctrl+clic droit sur un objet : il entre dans le Brouillon, pas dans le pro
     assertEquals(0, #b.lines, "vidé par le menu")
 end) end)
 
-test("le Brouillon : dans le menu « Projets », qui en fait un projet", function() sansRecettes(function()
+test("le Brouillon : dans le menu « Projets » ; Lancer en fait un projet en Réunir, la petite vue seule", function() sansRecettes(function()
     SlashCmdList.COMPOSANTS("demo ceinture")
     local nb = #ComposantsDB.projets
     choisir("Projets", "Brouillon")
@@ -175,67 +182,151 @@ test("le Brouillon : dans le menu « Projets », qui en fait un projet", functio
     assertTrue(not affiche("Brouillon"), "un projet choisi : on quitte le Brouillon")
     choisir("Projets", "Brouillon")
     assertTrue(affiche("Brouillon"))
-    choisir("Projets", "Faire un projet du Brouillon")
+    bouton("Lancer"):Click()
     assertEquals(nb + 1, #ComposantsDB.projets, "un vrai projet")
     assertEquals(2841, projet().lines[1].id, "avec les lignes du Brouillon")
+    assertEquals("Barre de bronze", projet().name, "nommé d'après sa première ligne")
+    assertEquals("reunir", projet().phase, "en Réunir")
     assertEquals(0, #ComposantsDB.brouillon.lines, "le Brouillon vidé")
-    assertTrue(not affiche("Brouillon"), "le nouveau projet affiché")
+    assertTrue(ComposantsBesoinsFrame:IsShown(), "ses Besoins montrés")
+    assertTrue(not ComposantsFrame:IsShown(), "la grande vue cachée")
 end) end)
 
--- Les Besoins : un seul bouton, « Mettre dans les Besoins » (le projet affiché y entre, la fenêtre s'ouvre) ou « Besoins »
--- (il y est : ouvrir, fermer) ; on retire un projet en cliquant sur son nom dans la fenêtre. Plus de case à cocher.
-local function ligneProjet(p)
-    return tous(ComposantsBesoinsFrame, function(c) return c.projet == p and c:IsShown() end)[1]
-end
+-- Lancer (CONTEXT.md) remplace « Mettre dans les Besoins » : le projet passe en Réunir, la petite vue (ses Besoins seuls)
+-- prend le coin de la grande, le fil en haut des deux ; chaque projet ses Besoins. Un choix de case, ou Tenir sur un projet
+-- lancé, le remet en Préparer.
 local function lignesBesoins()
     local out = {}
     for _, c in ipairs(tous(ComposantsBesoinsFrame, function(c) return c.itemID ~= nil and c:IsShown() end)) do out[c.itemID] = c end
     return out
 end
+local function casesDe(p)
+    local t = {}
+    for _, n in ipairs(Composants.Arbre(p).cases) do t[n.id] = true end
+    return t
+end
 
-test("Besoins de deux projets : la petite fenêtre, un « – » s'y voit aussitôt", function() sansRecettes(function()
-    ComposantsDB.besoins = {}
+test("Lancer : la petite vue au coin de la grande, le fil, les Besoins du seul projet affiché", function() sansRecettes(function()
     SlashCmdList.COMPOSANTS("demo set")
     local a = projet()
-    assertEquals(0, #tous(ComposantsFrame, function(c) return c:GetObjectType() == "CheckButton" and c.label and c.label:GetText() == "dans les Besoins" end), "plus de case")
-    bouton("Mettre dans les Besoins"):Click()
-    assertTrue(ComposantsBesoinsFrame:IsShown(), "mettre dans les Besoins ouvre la fenêtre")
-    assertNotNil(bouton("Besoins"), "il y est : le bouton dit « Besoins »")
+    assertNil(bouton("Mettre dans les Besoins"), "plus de « Mettre dans les Besoins »")
+    assertTrue(enCours(fil(ComposantsFrame, "Préparer")), "le fil de la grande vue : Préparer")
+    local x, y = ComposantsFrame:GetLeft(), ComposantsFrame:GetTop()
+    bouton("Lancer"):Click()
+    assertEquals("reunir", a.phase)
+    assertTrue(ComposantsBesoinsFrame:IsShown() and not ComposantsFrame:IsShown(), "une seule vue : la petite")
+    assertEquals(math.floor(x + 0.5), math.floor(ComposantsBesoinsFrame:GetLeft() + 0.5), "au coin de la grande")
+    assertEquals(math.floor(y + 0.5), math.floor(ComposantsBesoinsFrame:GetTop() + 0.5))
+    assertTrue(ComposantsBesoinsFrame.head:GetText():find(a.name, 1, true) ~= nil, "le projet affiché, nommé")
+    assertTrue(enCours(fil(ComposantsBesoinsFrame, "Réunir")), "le fil de la petite vue : Réunir")
+    assertTrue(not enCours(fil(ComposantsBesoinsFrame, "Préparer")))
+    local deA = lignesBesoins()
+    assertTrue(next(deA) ~= nil, "des objets à réunir")
+    -- Un autre projet : retour à la grande vue par le fil, puis la ceinture, lancée : ses Besoins à elle.
+    fil(ComposantsBesoinsFrame, "Préparer"):Click()
+    assertTrue(ComposantsFrame:IsShown() and not ComposantsBesoinsFrame:IsShown(), "le fil : la grande vue")
+    assertNil(a.phase, "Préparer")
     SlashCmdList.COMPOSANTS("demo ceinture")
-    local p = projet()
-    assertNotNil(bouton("Mettre dans les Besoins"), "pas encore dans les Besoins")
-    bouton("Mettre dans les Besoins"):Click()
-    assertEquals(a.id, ComposantsDB.besoins[1])
-    assertEquals(p.id, ComposantsDB.besoins[2])
-    assertTrue(ComposantsBesoinsFrame:IsShown())
-    assertTrue(next(lignesBesoins()) ~= nil, "des objets à réunir")
-    local envoyer = tous(ComposantsBesoinsFrame, function(c) return c.GetText and (c:GetText() or ""):find("Envoyer", 1, true) end)
-    assertEquals(0, #envoyer, "plus de bouton « Envoyer » (décision du PRD)")
-    -- « – » sur une case toute fabriquée du projet affiché : elle entre aussitôt dans les Besoins.
-    local carte
-    for _, c in ipairs(cases()) do
-        local n = c.node
-        if n.kind ~= "target" and n.made > 0 and n.made == n.qty and not lignesBesoins()[n.id] then carte = c break end
+    local b = projet()
+    bouton("Lancer"):Click()
+    assertTrue(ComposantsBesoinsFrame.head:GetText():find(b.name, 1, true) ~= nil)
+    local cb, horsB = casesDe(b), false
+    for id, l in pairs(lignesBesoins()) do
+        if not (l.info or ""):find("^Pour fabriquer") then assertTrue(cb[id], "une ligne d'un autre projet : " .. id) end
     end
-    assertNotNil(carte, "une case toute fabriquée, hors des Besoins")
-    local id = carte.node.id
+    for id in pairs(deA) do horsB = horsB or not cb[id] end
+    assertTrue(horsB, "les Besoins du set n'y sont plus")
+    -- Tenir sur un projet lancé (une tranche recalculée) : Préparer, la grande vue revient.
+    Composants.Tenir(b, "tenu par le test", b.lines)
+    Composants.Rafraichir()
+    assertNil(b.phase, "tenu : Préparer")
+    assertTrue(ComposantsFrame:IsShown() and not ComposantsBesoinsFrame:IsShown(), "la grande vue")
+    Composants.Tenir(b, nil)
+    -- Un choix de case en Fabriquer : Préparer, Lancer revient.
+    fil(ComposantsFrame, "Fabriquer"):Click()
+    assertEquals("fabriquer", b.phase)
+    assertTrue(enCours(fil(ComposantsFrame, "Fabriquer")) and not bouton("Lancer"), "Fabriquer : pas de Lancer")
+    local carte
+    for _, c in ipairs(cases()) do if c.node.made > 0 and c.node.kind ~= "target" then carte = c break end end
     carte:Click()
-    assertNotNil(lignesBesoins()[id], "achetée : dans les Besoins")
-    for _, c in ipairs(cases()) do if c.node.id == id then c:Click() end end -- « + » : retour au calcul
-    assertNil(lignesBesoins()[id], "de nouveau fabriquée : hors des Besoins")
-    assertNotNil(ligneProjet(p), "le projet, une ligne cliquable dans les Besoins")
-    ligneProjet(p):Click()
-    assertEquals(1, #ComposantsDB.besoins, "retiré des Besoins par sa ligne")
-    assertNotNil(bouton("Mettre dans les Besoins"), "le bouton suit")
-    ComposantsBesoinsFrame:Hide()
-    ComposantsDB.besoins = {}
+    assertNil(b.phase, "un choix de case : Préparer")
+    assertNotNil(bouton("Lancer"))
+end) end)
+
+-- Réunir → Fabriquer tout seul quand tout est dans les sacs ; la banque dit où le trouver, elle ne suffit pas ; jamais de
+-- retour tout seul ; Fini gardé après la vente ; le fil va partout ; « Clore » supprime. 4 barres d'étain à fondre (Fonte de
+-- l'étain, réserve du socle) ; les sacs et la banque sont ceux du test, la vue recalculée par Composants.Rafraichir.
+test("Réunir → Fabriquer quand tout est dans les sacs, pas à la banque ; Fini gardé ; le fil ; Clore", function() sansRecettes(function()
+    local moi = UnitGUID("player")
+    local sacs, banque = {}, { [2771] = 4 }
+    local G = { Conteneurs = AzerothCommune.Conteneurs, GetItemCount = C_Item.GetItemCount, fiche = AzerothCommuneDB.chars[moi] }
+    local function items(t) local out = {} for id, n in pairs(t) do out[#out + 1] = { id = id, count = n } end return { b = { items = out } } end
+    AzerothCommune.Conteneurs = function(garder) return garder("Backpack") and items(sacs) or {} end
+    C_Item.GetItemCount = function(id) return sacs[id] or 0 end
+    AzerothCommuneDB.chars[moi] = setmetatable({}, { __index = function(_, k) if k == "bank" then return items(banque) end return G.fiche and G.fiche[k] end })
+    -- La Fonte de l'étain : à apprendre, puis connue (une recette à apprendre retient en Réunir, comme un composant).
+    local connue, cle = false, nil
+    for k, r in pairs(AzerothCommune:Lire("base des recettes") or {}) do if r.output == 3576 then cle = k end end
+    G.Lire = AzerothCommune.Lire
+    AzerothCommune.Lire = function(self, t, ...)
+        if t == "recettes connues" then return { persos = connue and { [moi] = { Minage = { known = { [cle] = 1 } } } } or {} } end
+        return G.Lire(self, t, ...)
+    end
+    local p = Composants.NouveauProjet({ name = "Barres d'étain", lines = { { id = 3576, qty = 4 } } })
+    local ok, err = pcall(function()
+        Composants.Ouvrir(p.id)
+        bouton("Lancer"):Click()
+        local ligne = lignesBesoins()[2771]
+        assertNotNil(ligne, "le minerai d'étain à réunir")
+        assertTrue(ligne.text:GetText():find("banque 4", 1, true) ~= nil, "où le trouver : " .. ligne.text:GetText())
+        assertEquals("0/4", ligne.count:GetText(), "rien dans les sacs")
+        assertEquals("reunir", p.phase, "à la banque : on reste en Réunir")
+        sacs, banque = { [2771] = 4 }, {}
+        Composants.Rafraichir()
+        assertEquals("reunir", p.phase, "dans les sacs, mais la recette à apprendre : on reste en Réunir")
+        connue = true
+        Composants.Rafraichir()
+        assertEquals("fabriquer", p.phase, "dans les sacs, recette connue : Fabriquer tout seul")
+        assertTrue(ComposantsFrame:IsShown() and not ComposantsBesoinsFrame:IsShown(), "la grande vue")
+        assertTrue(enCours(fil(ComposantsFrame, "Fabriquer")))
+        sacs, banque = {}, { [2771] = 4 }
+        Composants.Rafraichir()
+        assertEquals("fabriquer", p.phase, "rangé à la banque : pas de retour en Réunir")
+        sacs, banque = { [3576] = 4 }, {}
+        Composants.Rafraichir()
+        assertEquals("fini", p.phase, "les barres fondues : Fini")
+        assertTrue(ComposantsFrame.clore and ComposantsFrame.clore:IsVisible(), "« Clore le projet »")
+        sacs = {}
+        Composants.Rafraichir()
+        assertEquals("fini", p.phase, "les barres vendues : Fini gardé")
+        assertTrue(ComposantsFrame.clore:IsVisible())
+        -- Le fil : n'importe quelle phase, la vue suit.
+        fil(ComposantsFrame, "Réunir"):Click()
+        assertEquals("reunir", p.phase)
+        assertTrue(ComposantsBesoinsFrame:IsShown() and not ComposantsFrame:IsShown())
+        fil(ComposantsBesoinsFrame, "Fabriquer"):Click()
+        assertEquals("fabriquer", p.phase)
+        assertTrue(ComposantsFrame:IsShown() and not ComposantsBesoinsFrame:IsShown())
+        fil(ComposantsFrame, "Préparer"):Click()
+        assertNil(p.phase)
+        -- De nouveau fabriquées, en Fabriquer : Fini, et « Clore » le supprime.
+        sacs = { [3576] = 4 }
+        fil(ComposantsFrame, "Fabriquer"):Click()
+        assertEquals("fini", p.phase)
+        ComposantsFrame.clore:Click()
+        assertNil(Composants.Projet(p.id), "clos : supprimé")
+    end)
+    AzerothCommune.Conteneurs, C_Item.GetItemCount, AzerothCommuneDB.chars[moi] = G.Conteneurs, G.GetItemCount, G.fiche
+    AzerothCommune.Lire = G.Lire
+    if Composants.Projet(p.id) then Composants.Supprimer(p.id) end
+    if not ok then error(err, 0) end
 end) end)
 
 -- La Récolte (#18) : sur une ligne qui manque encore, la bascule « Achat » / « Récolte » ; l'état se lit sur le bouton.
 test("Besoins : la bascule « Achat » / « Récolte » d'une ligne", function() sansRecettes(function()
-    ComposantsDB.besoins, ComposantsDB.recolte = {}, nil
+    ComposantsDB.recolte = nil
     SlashCmdList.COMPOSANTS("demo set")
-    bouton("Mettre dans les Besoins"):Click()
+    bouton("Lancer"):Click()
     local ligne
     for _, c in pairs(lignesBesoins()) do if c.mode and c.mode:IsShown() then ligne = c break end end
     assertNotNil(ligne, "une ligne qui manque, avec sa bascule")
@@ -249,8 +340,6 @@ test("Besoins : la bascule « Achat » / « Récolte » d'une ligne", function()
     ligne.mode:Click()
     assertEquals("Achat", lignesBesoins()[id].mode:GetText(), "de nouveau à acheter")
     assertNil(ComposantsDB.recolte[id])
-    ComposantsBesoinsFrame:Hide()
-    ComposantsDB.besoins = {}
 end) end)
 
 -- Fabrication (CONTEXT.md) : un projet tenu par un autre add-on (une tranche de montée de Maîtrise), aux lignes « recette ×
@@ -290,14 +379,11 @@ test("projet tenu à lignes fabrication : la racine toujours fabriquée, l'encha
         for _, c in ipairs(cases()) do if c.node.id == 2840 then c:Click() end end
         assertNil(p.choix and p.choix[2840])
         -- Les Besoins : la poussière à réunir.
-        ComposantsDB.besoins = {}
-        if ComposantsBesoinsFrame then ComposantsBesoinsFrame:Hide() end
-        bouton("Mettre dans les Besoins"):Click()
+        bouton("Lancer"):Click()
         assertNotNil(lignesBesoins()[10940], "la poussière dans les Besoins")
         -- La barre de bronze n'y paraît que par sa recette à apprendre (personne ne la connaît ici), jamais à réunir.
         local barreB = lignesBesoins()[2841]
         assertTrue(barreB == nil or (barreB.info or ""):find("^Pour fabriquer") ~= nil, "la barre de bronze, fabriquée : rien à réunir")
-        ComposantsDB.besoins = {}
     end)
     AzerothCommuneDB.recipes[7420] = avant
     Composants.Tenir(p, nil)
@@ -397,16 +483,12 @@ end
 
 -- Les Besoins défilent : une longue liste ne fait pas dépasser la fenêtre (retour de Virgile).
 test("Besoins : la fenêtre plafonne sa hauteur et la liste défile", function() sansRecettes(function()
-    ComposantsDB.besoins = {}
     SlashCmdList.COMPOSANTS("demo set")
     local p = projet()
     for id = 2840, 2880 do Composants.Ajouter(p, id, 3) end -- une quarantaine de lignes de plus
-    if ComposantsBesoinsFrame then ComposantsBesoinsFrame:Hide() end
-    bouton("Mettre dans les Besoins"):Click()
+    bouton("Lancer"):Click()
     assertTrue(ComposantsBesoinsFrame:GetHeight() <= 520, "hauteur plafonnée : " .. ComposantsBesoinsFrame:GetHeight())
     local n = 0
     for _ in pairs(lignesBesoins()) do n = n + 1 end
     assertTrue(n > 15, "beaucoup de lignes : " .. n)
-    ComposantsBesoinsFrame:Hide()
-    ComposantsDB.besoins = {}
 end) end)

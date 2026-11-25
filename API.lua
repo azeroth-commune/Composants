@@ -3,9 +3,10 @@
 local _, ns = ...
 
 Composants = {
-  -- Projets. p = le projet lui-même (une table : p.id son identité stable, p.name, p.lines, p.choix, p.tenu) ; on le lit,
-  -- on ne le modifie que par ces fonctions. Une ligne : un objet { id = itemID, qty = quantité }, ou une fabrication
-  -- { recette = sortID (la clé de la base des recettes), fois = nombre de fois }.
+  -- Projets. p = le projet lui-même (une table : p.id son identité stable, p.name, p.lines, p.choix, p.tenu, p.phase : nil
+  -- = Préparer, "reunir", "fabriquer" ou "fini", CONTEXT.md) ; on le lit, on ne le modifie que par ces fonctions. Changer ses
+  -- lignes ou un choix de case (Tenir avec des lignes compris) le remet en Préparer. Une ligne : un objet { id = itemID,
+  -- qty = quantité }, ou une fabrication { recette = sortID (la clé de la base des recettes), fois = nombre de fois }.
   NouveauProjet = function(t) return ns.nouveauProjet(t) end,          -- t = { name, lines } facultatif ; il devient le projet affiché
   Projet = function(id) return (ns.projet(id)) end,                    -- nil s'il n'existe plus
   Projets = function() return ns.db().projets end,                     -- dans l'ordre de la liste
@@ -15,7 +16,7 @@ Composants = {
     if not i then return nil end
     ns.db().courant = i
     local p = ns.supprimerProjet()
-    ns.refreshCraftWindow()
+    ns.refreshCraftWindow(); ns.refreshNeeds() -- la petite vue aussi : elle montrait peut-être le projet supprimé
     return p
   end,
   -- Lignes et choix de case : true, ou false et la raison (un projet tenu refuse ses lignes avec la raison de celui qui le
@@ -35,12 +36,13 @@ Composants = {
   -- stock déduit (ce que verrait un artisan) ; sinon les options de la fenêtre. apports = { [id] = true } facultatif : ces
   -- cases sortent de l'arbre. Renvoie { roots, cases, caseDe, liens, blocs, blocDe, livraisons, total, incomplete, market }.
   Arbre = function(p, sansStock, apports) return ns.projetArbre(p, sansStock and { unlearned = true } or nil, apports) end,
-  -- « Ce projet a changé » : fn(p, quoi), quoi = "nouveau", "lignes", "choix", "nom", "tenu" ou "supprime".
+  -- « Ce projet a changé » : fn(p, quoi), quoi = "nouveau", "lignes", "choix", "nom", "tenu", "phase" ou "supprime".
   QuandChange = function(fn) ns.quandChange(fn) end,
-  -- La fenêtre : ouverte sur le projet id (ou celui affiché) ; redessinée (un autre add-on a changé ce qu'elle montre).
+  -- La fenêtre : ouverte sur le projet id (ou celui affiché), dans la vue de sa phase ; redessinée (un autre add-on a changé
+  -- ce qu'elle montre).
   Ouvrir = function(id)
     if id then ns.ouvrirProjet(id) end
     ns.openCraftWindow()
   end,
-  Rafraichir = function() ns.refreshCraftWindow() end,
+  Rafraichir = function() ns.refreshCraftWindow(); ns.refreshNeeds() end,
 }

@@ -131,8 +131,8 @@ donnees({ hv = market, recettes = { [3307] = { name = "Fonte du fer", output = 3
   sacs = { [2772] = 15, [3575] = 4 }, banque = { [2772] = 5 } })
 print("Composants : valeur à l'HV et ce que ça rapporte OK")
 
--- Les Besoins (CONTEXT.md) : les projets qu'on y a mis, dans l'ordre où on les y a mis, puis le Brouillon, sur UN stock ;
--- la page d'un projet l'estime comme s'il était seul.
+-- Les Besoins (CONTEXT.md) : ceux d'un seul projet, qui compte le stock comme s'il était seul (rien de partagé entre
+-- projets). Réuni = tout dans les sacs : la banque et les autres persos disent où le trouver, ils ne comptent pas.
 do
   donnees({ hv = market, recettes = {}, sacs = { [3575] = 12 } })
   local OPT = { bags = true, bank = true }
@@ -141,45 +141,30 @@ do
   end
   local pa = ns.nouveauProjet({ name = "A", lines = { { id = 3575, qty = 10 } } })
   local pb = ns.nouveauProjet({ name = "B", lines = { { id = 3575, qty = 10 } } })
-  ns.viderBrouillon()
-  for _, p in ipairs(ns.besoinsProjets()) do ns.besoinsRetirer(p) end
-  assert(#ns.besoinsProjets() == 0, "rien dans les Besoins")
-  ns.besoinsMettre(pa); ns.besoinsMettre(pb); ns.besoinsMettre(pa)
-  local liste = ns.besoinsProjets()
-  assert(#liste == 2 and liste[1] == pa and liste[2] == pb and ns.dansBesoins(pa), "A puis B, une fois chacun")
-  local res = ns.besoinsArbre(OPT)
-  local r = besoin(res, 3575)
-  assert(r.required == 20 and r.have[1] == 12 and r.need == 8, "un seul stock : 8 barres à réunir, pas " .. r.need)
-  assert(#res.roots == 2 and res.roots[1].have[1] == 10 and res.roots[2].have[1] == 2, "le stock va d'abord à A")
   for _, p in ipairs({ pa, pb }) do
-    local t = ns.projetArbre(p, OPT).caseDe.T1
-    assert(t.need == 0 and t.have[1] == 10, "la page de " .. p.name .. " : en stock, comme s'il était seul")
+    local r = besoin(ns.besoinsArbre(p, OPT), 3575)
+    assert(r.required == 10 and r.have[1] == 10 and r.need == 0, "les Besoins de " .. p.name .. " : tout le stock pour lui")
+    assert(ns.toutReuni(p, OPT), p.name .. " : réuni")
   end
-  -- L'ordre d'ajout décide : A retiré puis remis passe après B.
-  ns.besoinsRetirer(pa)
-  assert(#ns.besoinsProjets() == 1 and not ns.dansBesoins(pa), "A retiré")
-  ns.besoinsMettre(pa)
-  res = ns.besoinsArbre(OPT)
-  assert(res.projets[1] == pb and res.roots[1].have[1] == 10 and res.roots[2].have[1] == 2, "B d'abord, maintenant")
-  -- Le Brouillon y compte, en dernier, même mis avant.
-  local b = ns.brouillon()
-  ns.projetAjouter(b, 3575, 5)
-  ns.besoinsMettre(b)
-  res = ns.besoinsArbre(OPT)
-  assert(#res.projets == 3 and res.projets[3] == b and res.roots[3].have[1] == 0 and besoin(res, 3575).need == 13, "le Brouillon, en dernier")
-  -- Chaque projet avec ses choix de case : A fond son minerai (sans prendre de barres), B et le Brouillon achètent.
-  AzerothCommuneDB.recipes = { [3307] = { name = "Fonte du fer", output = 3575, reagents = { { id = 2772, qty = 1 } } } }
-  ns.projetChoix(pa, 3575, "fabriquer"); ns.projetChoix(pb, 3575, "acheter"); ns.projetChoix(b, 3575, "acheter")
-  res = ns.besoinsArbre({ bags = true, unlearned = true })
-  assert(besoin(res, 2772).required == 10 and besoin(res, 3575).need == 3, "choix de case de chacun : A fond 10 minerais")
-  -- Un projet supprimé sort des Besoins ; une modification d'un projet s'y voit au calcul suivant.
-  ns.projetQuantite(pb, 1, 20)
-  assert(besoin(ns.besoinsArbre(OPT), 3575).required == 25, "la quantité changée de B compte (20 + 5 du Brouillon ; A fond)")
-  ns.ouvrirProjet(pb.id); ns.supprimerProjet()
-  assert(#ns.besoinsProjets() == 2 and ns.besoinsProjets()[1] == pa, "B supprimé : plus dans les Besoins")
-  ns.viderBrouillon(); ns.besoinsRetirer(pa)
+  -- À la banque seulement : rien à acheter (on sait où le trouver), mais pas réuni.
+  donnees({ hv = market, recettes = {}, banque = { [3575] = 10 } })
+  local r = besoin(ns.besoinsArbre(pa, OPT), 3575)
+  assert(r.need == 0 and r.have[1] == 0 and r.have[2] == 10, "à la banque : où le trouver")
+  assert(not ns.toutReuni(pa, OPT), "à la banque : pas réuni")
+  -- « Déduire mes sacs » décoché : pour réunir, les sacs comptent quand même.
+  donnees({ hv = market, recettes = {}, sacs = { [3575] = 10 } })
+  assert(ns.toutReuni(pa, { bags = false }), "les sacs comptent toujours pour réunir")
+  assert(not ns.toutReuni(ns.nouveauProjet({ name = "vide" }), OPT), "un projet vide n'est pas réuni")
+  -- Une recette à apprendre : pas réuni (il faut l'avoir pour fabriquer, comme les composants).
+  local orderNeeds = ns.orderNeeds
+  ns.orderNeeds = function(res) return (orderNeeds(res)), { { name = "Fonte du fer", product = 3575 } } end
+  assert(not ns.toutReuni(pa, OPT), "une recette à apprendre : pas réuni")
+  ns.orderNeeds = orderNeeds
+  -- Les anciennes SavedVariables : la liste ordonnée des Besoins est purgée.
+  ComposantsDB.besoins = { pa.id, pb.id }
+  assert(ns.db().besoins == nil, "la liste des Besoins d'avant : purgée")
 end
-print("Composants : Besoins sur plusieurs projets, un seul stock OK")
+print("Composants : Besoins d'un projet seul, réuni = dans les sacs OK")
 
 -- La Récolte (CONTEXT.md, #18) et la liste d'achats d'Auctionator « Besoins (Composants) » : les lignes qui manquent
 -- encore, sauf la Récolte et ce qu'un marchand vend ; repasser sur « Achat » ne demande que ce qui manque encore.
@@ -187,10 +172,8 @@ do
   donnees({ hv = market, recettes = {}, sacs = { [3575] = 3 } })
   AzerothCommuneDB.vendors = {}
   local p = ns.nouveauProjet({ name = "Récolte", lines = { { id = 3575, qty = 10 } } })
-  ns.viderBrouillon()
-  for _, q in ipairs(ns.besoinsProjets()) do ns.besoinsRetirer(q) end
-  ns.besoinsMettre(p)
-  local function achats() return ns.achatsHV((ns.orderNeeds(ns.besoinsArbre()))) end
+  ns.ouvrirProjet(p.id) -- la liste d'Auctionator suit les Besoins du projet affiché
+  local function achats() return ns.achatsHV((ns.orderNeeds(ns.besoinsArbre(p)))) end
   local a = achats()
   assert(#a == 1 and a[1].id == 3575 and a[1].qty == 7, "sans choix : à acheter, ce qui manque (10 − 3)")
   assert(not ns.estRecolte(3575))
@@ -235,13 +218,84 @@ do
   assert(ecritures == 1 and listes["Besoins (Composants)"][1]:find(";4$"), "bascule HV ouvert : liste réécrite")
   ns.projetQuantite(p, 1, 12) -- « ce projet a changé » : 12 − 6
   assert(ecritures == 2 and listes["Besoins (Composants)"][1]:find(";6$"), listes["Besoins (Composants)"][1])
-  ns.besoinsMettre(p) -- déjà dedans : même liste
+  ns.besoinsChanges() -- rien n'a changé : même liste
   assert(ecritures == 2, "même liste : pas réécrite")
+  -- Un autre projet affiché : ses Besoins à lui ; le Brouillon n'entre dans aucuns Besoins.
+  local autre = ns.nouveauProjet({ name = "Autre", lines = { { id = 3575, qty = 8 } } })
+  ns.besoinsChanges()
+  assert(ecritures == 3 and listes["Besoins (Composants)"][1]:find(";2$"), "l'autre projet : 8 − 6")
+  autre.phase = "fini" -- un projet Fini ne fait plus rien acheter
+  ns.besoinsChanges()
+  assert(ecritures == 4 and #listes["Besoins (Composants)"] == 0, "un projet Fini : liste vide")
+  ns.ouvrirBrouillon()
+  ns.besoinsChanges()
+  assert(ecritures == 4 and #listes["Besoins (Composants)"] == 0, "le Brouillon : liste vide")
+  ns.ouvrirProjet(autre.id); ns.supprimerProjet()
   AuctionHouseFrame = nil
   Auctionator, AzerothCommuneItems.items[3575], ComposantsDB.recolte = nil, nil, nil
-  ns.besoinsRetirer(p)
 end
 print("Composants : Récolte et liste d'achats d'Auctionator OK")
+
+-- Les phases (CONTEXT.md) : Préparer → Lancer → Réunir → (tout dans les sacs) Fabriquer → (plus rien à fabriquer) Fini ;
+-- jamais de retour en arrière tout seul, Fini gardé. Le fil va à n'importe quelle phase. Tout changement de lignes ou de
+-- choix de case (Tenir compris) remet en Préparer. Lancer le Brouillon en fait un projet en Réunir, le Brouillon se vide.
+do
+  local fonte = { [3307] = { name = "Fonte du fer", output = 3575, profession = "Minage", reagents = { { id = 2772, qty = 1 } } } }
+  local function poser(d)
+    d.hv, d.recettes = market, fonte
+    donnees(d)
+    AzerothCommuneDB.chars[MOI].recipes = { Minage = { rank = 75, known = { [3307] = true } } }
+  end
+  local vus = {}
+  Composants.QuandChange(function(q, quoi) if quoi == "phase" then vus[#vus + 1] = ns.phase(q) end end)
+  poser({ banque = { [2772] = 5 } })
+  local p = Composants.NouveauProjet({ name = "Phases", lines = { { id = 3575, qty = 5 } } })
+  assert(ns.phase(p) == "preparer" and p.phase == nil, "un projet naît en Préparer")
+  assert(ns.lancer(p) == p and ns.phase(p) == "reunir", "Lancer : Réunir")
+  ns.avancerPhase(p)
+  assert(ns.phase(p) == "reunir", "le minerai à la banque : toujours Réunir")
+  poser({ sacs = { [2772] = 5 } })
+  assert(ns.avancerPhase(p) and ns.phase(p) == "fabriquer", "le minerai dans les sacs : Fabriquer tout seul")
+  poser({ banque = { [2772] = 5 } })
+  assert(not ns.avancerPhase(p) and ns.phase(p) == "fabriquer", "rangé à la banque : pas de retour en Réunir")
+  poser({ sacs = { [3575] = 5 } })
+  assert(ns.avancerPhase(p) and ns.phase(p) == "fini", "les barres fondues : Fini")
+  poser({})
+  ns.avancerPhase(p)
+  assert(ns.phase(p) == "fini", "les barres vendues : Fini gardé")
+  assert(table.concat(vus, ",") == "reunir,fabriquer,fini", "le signal « phase » : " .. table.concat(vus, ","))
+  -- Le fil : n'importe quelle phase, dans tous les sens.
+  for _, ph in ipairs({ "preparer", "fabriquer", "reunir", "preparer" }) do
+    assert(ns.allerPhase(p, ph) == p and ns.phase(p) == ph, "le fil : " .. ph)
+  end
+  -- Tout changement de lignes ou de choix de case remet en Préparer ; un nom changé, non.
+  local function lance() ns.lancer(p); assert(ns.phase(p) == "reunir") end
+  lance(); Composants.Choix(p, 2772, "acheter"); assert(ns.phase(p) == "preparer", "un choix de case : Préparer")
+  lance(); Composants.Quantite(p, 1, 6); assert(ns.phase(p) == "preparer", "une quantité : Préparer")
+  lance(); Composants.Ajouter(p, 2772, 1); assert(ns.phase(p) == "preparer", "une ligne ajoutée : Préparer")
+  lance(); Composants.Retirer(p, 2); assert(ns.phase(p) == "preparer", "une ligne retirée : Préparer")
+  lance(); Composants.Renommer(p, "Phases bis"); assert(ns.phase(p) == "reunir", "renommé : la phase reste")
+  ns.allerPhase(p, "fabriquer")
+  Composants.Tenir(p, "tenu par le test", { { id = 3575, qty = 7 } })
+  assert(ns.phase(p) == "preparer", "Tenir avec des lignes (une tranche recalculée) : Préparer")
+  lance(); Composants.Tenir(p, nil); assert(ns.phase(p) == "reunir", "lâché sans changer ses lignes : la phase reste")
+  Composants.Supprimer(p.id)
+  -- Le Brouillon lancé : un vrai projet en Réunir, nommé d'après sa première ligne ; un Brouillon vide le remplace.
+  AzerothCommuneItems.items[3575] = { name = "Barre de fer" }
+  local b = ns.brouillon()
+  ns.viderBrouillon()
+  assert(ns.lancer(b) == nil, "Brouillon vide : rien à lancer")
+  ns.projetAjouter(b, 3575, 3); ns.projetAjouter(b, 2772, 2)
+  ns.ouvrirBrouillon()
+  local q = ns.lancer(b)
+  assert(q and not ns.estBrouillon(q) and q.name == "Barre de fer" and ns.phase(q) == "reunir", "un vrai projet, en Réunir, nommé d'après sa 1re ligne")
+  assert(#q.lines == 2 and #b.lines == 0 and ns.phase(b) == "preparer" and ns.projetCourant() == q, "le Brouillon vidé, le projet affiché")
+  assert(ns.allerPhase(b, "reunir") == nil, "le fil sur un Brouillon vide : rien")
+  Composants.Supprimer(q.id)
+  AzerothCommuneItems.items[3575] = nil
+  commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
+end
+print("Composants : phases, Lancer, le fil, Réunir → Fabriquer tout seul, Fini gardé OK")
 
 -- Recettes équivalentes (#46) : vrai-argent par le minage (10098) ou par la transmutation (11480), sans prix. Le choix ne
 -- dépend pas de l'ordre de la base des recettes : personne ne les connaît → le plus petit identifiant ; un perso connaît la
@@ -598,8 +652,7 @@ end
 print("Composants : API publique OK")
 
 -- Le Brouillon (CONTEXT.md) : Ctrl+clic droit sur un objet (lien) l'y met, une fois, jamais dans le projet affiché ; il
--- n'est pas dans la liste des projets ; le menu « Projets » en fait un vrai projet (lignes et choix de case) et
--- il se vide.
+-- n'est pas dans la liste des projets ; Lancer en fait un vrai projet (lignes et choix de case) et il se vide.
 do
   C_Item.GetItemInfoInstant = function() return nil, nil, nil, nil, nil, 4 end -- une arme, pas une recette
   local ouvrir = ns.openCraftWindow
@@ -624,15 +677,15 @@ do
   assert(ns.projetRetirer(b, 2) and #b.lines == 1, "une ligne retirée")
   ns.viderBrouillon()
   assert(#b.lines == 0, "vidé")
-  -- « + » : un vrai projet avec ses lignes et ses choix de case ; le Brouillon se vide.
+  -- Lancer : un vrai projet avec ses lignes et ses choix de case ; le Brouillon se vide.
   ns.projetAjouter(b, 5541, 2)
   ns.projetChoix(b, 2841, "acheter")
   ns.ouvrirBrouillon()
-  local q = ns.brouillonEnProjet()
+  local q = ns.lancer(b)
   assert(q and not ns.estBrouillon(q) and Composants.Projets()[#Composants.Projets()] == q, "un vrai projet, dans la liste")
   assert(#q.lines == 1 and q.lines[1].id == 5541 and q.lines[1].qty == 2 and q.choix[2841] == "acheter", "ses lignes, ses choix de case")
   assert(#b.lines == 0 and b.choix == nil and ns.projetCourant() == q, "le Brouillon vidé, le projet affiché")
-  assert(ns.brouillonEnProjet() == nil and #Composants.Projets() == n + 1, "Brouillon vide : pas de projet vide")
+  assert(ns.lancer(b) == nil and #Composants.Projets() == n + 1, "Brouillon vide : pas de projet vide")
   -- On n'y commande rien : Composants ne demande jamais à Handshake les apports du Brouillon.
   local demande
   Handshake = { Apports = function(x) demande = x return {} end }
@@ -645,7 +698,7 @@ print("Composants : Brouillon, Ctrl+clic droit OK")
 -- Fabrication (CONTEXT.md) : une ligne « recette × nombre de fois » d'un projet tenu (une tranche de montée de Maîtrise).
 -- Sa case racine est toujours fabriquée avec cette recette (ni stock pris, ni achat ; son choix de case ne peut pas être
 -- « acheter ») ; une recette sans objet produit (un enchantement) n'a pour cases que ses composants ; dessous, les choix
--- de case restent libres, et les Besoins comptent le stock de tous les persos comme pour les autres projets.
+-- de case restent libres, et ses Besoins comptent le stock de tous les persos comme pour les autres projets.
 do
   local ALT = "Player-6942-00000A17"
   local function prix(pc) return { tiers = { { price = pc, qty = 999 } } } end
@@ -678,17 +731,13 @@ do
   assert(Composants.Choix(p, 2840, "acheter") and Composants.Arbre(p, true).caseDe.I2840.made == 0, "dessous, libre : cuivre acheté")
   Composants.Choix(p, 2840, nil)
   -- Les Besoins : la barre fabriquée n'y est pas ; la poussière, avec le stock de mes sacs et d'un autre perso.
-  ns.viderBrouillon()
-  for _, q in ipairs(ns.besoinsProjets()) do ns.besoinsRetirer(q) end
-  ns.besoinsMettre(p)
   local function besoin(r, id) for _, l in ipairs((ns.orderNeeds(r))) do if l.id == id then return l end end end
-  local b = ns.besoinsArbre({ bags = true, alts = true, unlearned = true })
+  local b = ns.besoinsArbre(p, { bags = true, alts = true, unlearned = true })
   local poussiere = besoin(b, 10940)
   assert(not besoin(b, 2841), "la barre fabriquée : rien à réunir")
   assert(poussiere and poussiere.required == 3 and poussiere.have[1] == 1 and poussiere.have[3] == 1 and poussiere.need == 1,
     "la poussière : 1 en sac, 1 chez un autre perso, 1 à acheter")
   assert(besoin(b, 2770).required == 5 and besoin(b, 3576).required == 5, "le minerai de cuivre et l'étain")
-  ns.besoinsRetirer(p)
   -- Lâché, une ligne fabrication change de nombre de fois.
   Composants.Tenir(p, nil)
   assert(Composants.Quantite(p, 1, 7) and p.lines[1].fois == 7 and p.lines[1].qty == nil, "lâché : le nombre de fois se change")
