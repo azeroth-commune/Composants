@@ -66,7 +66,14 @@ local function fil(f, nom)
         return c:GetObjectType() == "Button" and c:IsVisible() and ((c:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) == nom
     end)[1]
 end
-local function enCours(b) return (b:GetText() or ""):find("|cffffd100", 1, true) ~= nil end -- doré
+-- La phase en cours : son bouton non cliquable, comme l'onglet choisi du jeu (bug du 25/11 : les couleurs ne se lisaient pas).
+local function enCours(b) return not b:IsEnabled() and (b:GetText() or ""):find("|cffffd100", 1, true) ~= nil end -- doré
+-- « › Fini » au bout du fil d'une vue, visible seulement en Fini.
+local function filFini(f)
+    for _, r in ipairs({ f:GetRegions() }) do
+        if r.GetText and (r:GetText() or ""):find("Fini", 1, true) and r:IsVisible() then return r end
+    end
+end
 
 -- Personne n'a de recette ici : « recettes pas apprises » cochée, toutes comptent et les blocs se dessinent. L'option est
 -- rendue telle quelle, même si une vérification échoue.
@@ -114,6 +121,13 @@ test("projet de démo : l'arbre et ses blocs, la colonne passe d'un projet à l'
     assertTrue(#etapes > 1, "des blocs, un par métier")
     SlashCmdList.COMPOSANTS("demo set")
     assertTrue(affiche("Essai : set en thorium enchanté"))
+    -- Les étiquettes des livraisons (« pour Forge · 84× … ») ne dépassent pas le bord droit visible du dessin.
+    local tags = tous(ComposantsFrame, function(c) return c.order ~= nil and c:IsShown() end)
+    assertTrue(#tags > 0, "des livraisons entre métiers")
+    for _, t in ipairs(tags) do
+        local zone = t:GetParent():GetParent()
+        assertTrue(t:GetRight() * t:GetEffectiveScale() <= zone:GetRight() * zone:GetEffectiveScale() + 1, "étiquette au-delà du bord : " .. t.text:GetText())
+    end
     assertNil(deroulant("Projets"), "plus de menu « Projets »")
     ouvrir("Essai : ceintures multi-métiers")
     assertTrue(affiche("Essai : ceintures multi-métiers"))
@@ -317,17 +331,27 @@ test("Réunir → Fabriquer quand tout est dans les sacs, pas à la banque ; Fin
         sacs, banque = { [2771] = 4 }, {}
         Composants.Rafraichir()
         assertEquals("reunir", p.phase, "dans les sacs, mais la recette à apprendre : on reste en Réunir")
+        -- Une recette de maître (aucun objet ne l'apprend) : « Apprendre : … chez le maître », pas un objet jamais vu.
+        local rec = lignesBesoins()[3576]
+        assertNotNil(rec, "la ligne de la recette à apprendre")
+        assertEquals("Apprendre : Fonte de l'étain", rec.text:GetText())
+        assertEquals("chez le maître", rec.count:GetText())
+        assertTrue((rec.info or ""):find("maître de Minage", 1, true) ~= nil, rec.info or "")
         connue = true
         Composants.Rafraichir()
         assertEquals("fabriquer", p.phase, "dans les sacs, recette connue : Fabriquer tout seul")
         assertTrue(ComposantsFrame:IsShown() and not ComposantsBesoinsFrame:IsShown(), "la grande vue")
         assertTrue(enCours(fil(ComposantsFrame, "Fabriquer")))
+        assertTrue(not enCours(fil(ComposantsFrame, "Préparer")) and not enCours(fil(ComposantsFrame, "Réunir")), "une seule phase en cours")
+        assertNil(filFini(ComposantsFrame), "pas Fini : pas de « Fini »")
         sacs, banque = {}, { [2771] = 4 }
         Composants.Rafraichir()
         assertEquals("fabriquer", p.phase, "rangé à la banque : pas de retour en Réunir")
         sacs, banque = { [3576] = 4 }, {}
         Composants.Rafraichir()
         assertEquals("fini", p.phase, "les barres fondues : Fini")
+        assertNotNil(filFini(ComposantsFrame), "Fini : « › Fini » au bout du fil")
+        for _, nom in ipairs({ "Préparer", "Réunir", "Fabriquer" }) do assertTrue(not enCours(fil(ComposantsFrame, nom)), "Fini : " .. nom .. " cliquable") end
         assertTrue(ComposantsFrame.clore and ComposantsFrame.clore:IsVisible(), "« Clore »")
         assertEquals("Clore", ComposantsFrame.clore:GetText())
         sacs = {}

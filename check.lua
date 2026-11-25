@@ -443,7 +443,7 @@ end
 do
   local gr = ns.dessinArbre(both({ [2841] = "fabriquer" }))
   local forge = gr.groupOf.Forge
-  assert(forge.label == "Étape 2 · Forge · niv. 100 requis · Bel Dupont 164 (1/2)", forge.label)
+  assert(forge.label == "Étape 2 · Forge · niv. 100 requis · Bel Dupont 164 (1/2) · temps inconnu", forge.label)
   -- Rectangles : chaque métier dans sa bande, aucune case d'un autre dans son rectangle.
   for _, grp in ipairs(gr.groups) do
     local top, bottom, left, right = math.huge, -math.huge, math.huge, -math.huge
@@ -459,7 +459,7 @@ do
   assert(gr.byKey.I2770.band == "Minage", "minerai sous le bronze : dans la bande du minage")
   bronzeR.profession = "Couture"
   gr = ns.dessinArbre(both({ [2841] = "fabriquer" }))
-  assert(gr.groupOf.Couture.label == "Étape 1 · Couture · personne de ta liste", gr.groupOf.Couture.label)
+  assert(gr.groupOf.Couture.label == "Étape 1 · Couture · personne de ta liste · temps inconnu", gr.groupOf.Couture.label)
   for _, n in ipairs(gr.nodes) do -- rien ne se chevauche, bande sans artisan comprise
     for _, m in ipairs(gr.nodes) do
       assert(n == m or n.col ~= m.col or n.y + 42 <= m.y or m.y + 42 <= n.y, "cases superposées")
@@ -588,6 +588,13 @@ local res = { cases = {
 local rows, recipes = ns.orderNeeds(res)
 assert(#rows == 2 and rows[1].id == 3858 and rows[1].required == 36 and rows[2].need == 0, "manquants d'abord, le complet ensuite")
 assert(#recipes == 1 and recipes[1].item == 7989, "recette trouvée par son nom")
+-- Une recette de maître (aucun objet ne l'apprend) : pas d'objet, son métier ; un patron connu de la base : cet objet.
+res.cases[1] = { id = 7964, kind = "target", qty = 1, made = 1, need = 0, have = { 0, 0, 0 }, unknown = true,
+  recipe = { name = "Pierre à aiguiser solide", profession = "Forge" } }
+rows, recipes = ns.orderNeeds(res)
+assert(#recipes == 1 and recipes[1].item == nil and recipes[1].metier == "Forge", "recette de maître : pas d'objet")
+res.cases[1].recipe.patron = 7990
+assert(ns.orderNeeds(res) and select(2, ns.orderNeeds(res))[1].item == 7990, "le patron de la base")
 print("Composants : besoins OK")
 
 aucunReleve("après les calculs")
@@ -836,12 +843,67 @@ do
   assert(poussiere and poussiere.required == 3 and poussiere.have[1] == 1 and poussiere.have[3] == 1 and poussiere.need == 1,
     "la poussière : 1 en sac, 1 chez un autre perso, 1 à acheter")
   assert(besoin(b, 2770).required == 5 and besoin(b, 3576).required == 5, "le minerai de cuivre et l'étain")
+  -- Les fabrications faites (ns.compterFabrication, sur UNIT_SPELLCAST_SUCCEEDED) : seulement un projet lancé ; chacune pour
+  -- un seul projet, l'affiché d'abord, sinon le premier de la liste à qui il en reste ; la ligne n'en demande plus que le reste.
+  assert(ns.compterFabrication(2659) == nil and not p.faites, "en Préparer : rien de compté")
+  local autre = Composants.NouveauProjet({ name = "Autre", lines = { { recette = 2659, fois = 1 } } }) -- l'affiché
+  ns.projetPhase(p, "fabriquer"); ns.projetPhase(autre, "reunir")
+  assert(ns.compterFabrication(2659) == autre and autre.faites[2659] == 1 and not p.faites, "l'affiché d'abord")
+  assert(ns.projetFini(ns.projetArbre(autre)), "toutes faites : fini, ses composants ne sont plus demandés")
+  assert(ns.projetArbre(autre).valeur == nil, "toutes faites : plus de valeur à l'HV")
+  assert(ns.compterFabrication(2659) == p and p.faites[2659] == 1 and autre.faites[2659] == 1, "plus rien à l'affiché : le suivant")
+  ns.compterFabrication(2659); ns.compterFabrication(2659)
+  local reste = Composants.Arbre(p, true)
+  assert(reste.caseDe.T1.made == 4 and reste.caseDe.T1.crafts == 2 and reste.caseDe.I2840.qty == 2, "3 faites sur 5 : 2 fontes, 4 barres")
+  assert(reste.total == 2 * 2 + 2 * 10 + 3 * 50, "le coût du reste seulement")
+  assert(besoin(ns.besoinsArbre(p, { bags = true, unlearned = true }), 2770).required == 2, "les Besoins du reste")
+  assert(ns.allerPhase(p, "preparer") and p.faites[2659] == 3, "revenir à Préparer par le fil : rien d'oublié")
+  assert(ns.compterFabrication(2659) == nil, "en Préparer : rien de compté")
+  ns.projetPhase(p, "fabriquer")
+  ns.compterFabrication(2659); ns.compterFabrication(2659)
+  assert(ns.compterFabrication(2659) == nil and p.faites[2659] == 5, "les 5 faites : plus rien à compter")
+  reste = Composants.Arbre(p, true)
+  assert(reste.caseDe.T1.made == 0 and not reste.caseDe.I2840 and reste.caseDe.I10940.qty == 3, "la fonte finie ; l'enchantement reste")
+  Composants.Tenir(p, "tenu par Maîtrise", { { recette = 2659, fois = 5 }, { recette = 7420, fois = 3 } })
+  assert(not p.faites and p.phase == nil, "nouvelles lignes : les faites oubliées, Préparer")
+  autre.phase = nil
+  Composants.Supprimer(autre.id)
   -- Lâché, une ligne fabrication change de nombre de fois.
   Composants.Tenir(p, nil)
   assert(Composants.Quantite(p, 1, 7) and p.lines[1].fois == 7 and p.lines[1].qty == nil, "lâché : le nombre de fois se change")
+  ns.projetPhase(p, "fabriquer"); ns.compterFabrication(2659); ns.compterFabrication(7420)
+  assert(Composants.Quantite(p, 1, 6) and p.faites[2659] == nil and p.faites[7420] == 1, "Quantite : les faites de cette ligne oubliées")
+  assert(Composants.Retirer(p, 2) and p.faites == nil, "Retirer : celles de la ligne retirée")
   commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
 end
 print("Composants : lignes fabrication d'un projet tenu OK")
+
+-- Le temps de fabrication (AzerothCommune#70) : fabrications restantes × temps d'incantation (cast), par étape et en tout ;
+-- une recette sans cast : « au moins » (ou « temps inconnu ») ; il suit le décompte des fabrications faites.
+do
+  local function prix(pc) return { tiers = { { price = pc, qty = 999 } } } end
+  donnees({ hv = { [2840] = prix(10), [3576] = prix(10), [2770] = prix(2), [10940] = prix(50) },
+    recettes = {
+      [2659] = { name = "Fonte du bronze", output = 2841, made_min = 2, profession = "Minage", cast = 3, reagents = { { id = 2840, qty = 1 }, { id = 3576, qty = 1 } } },
+      [2657] = { name = "Fonte du cuivre", output = 2840, profession = "Minage", reagents = { { id = 2770, qty = 1 } } }, -- sans cast
+      [7420] = { name = "Enchanter le plastron - Vie mineure", profession = "Enchantement", cast = 5, reagents = { { id = 10940, qty = 1 } } } } })
+  local p = Composants.NouveauProjet({ name = "Temps", lines = { { recette = 2659, fois = 5 }, { recette = 7420, fois = 3 } } })
+  local res = Composants.Arbre(p, true) -- 5 fontes de bronze × 3 s (des fabrications, pas les 10 barres), 3 enchantements × 5 s
+  assert(res.temps == 30 and res.tempsIncomplet and res.blocDe.Minage.temps == 15 and res.blocDe.Minage.tempsIncomplet,
+    "le cuivre fondu n'a pas de temps : au moins")
+  assert(ns.texteTemps(res) == "au moins 30 s" and ns.texteTemps(res.blocDe.Minage) == "au moins 15 s", ns.texteTemps(res))
+  assert(ns.dessinArbre(res).groupOf.Minage.label:find(" · au moins 15 s$"), "sur la ligne de l'étape")
+  Composants.Choix(p, 2840, "acheter") -- le cuivre acheté : tous les temps connus
+  res = Composants.Arbre(p, true)
+  assert(res.temps == 30 and not res.tempsIncomplet and ns.texteTemps(res) == "30 s", tostring(ns.texteTemps(res)))
+  ns.projetPhase(p, "fabriquer"); ns.compterFabrication(2659); ns.compterFabrication(2659)
+  assert(Composants.Arbre(p, true).temps == 3 * 3 + 15, "il suit les fabrications faites")
+  assert(ns.duree(45) == "45 s" and ns.duree(129) == "2 min" and ns.duree(3900) == "1 h 05", ns.duree(3900))
+  assert(ns.texteTemps({ temps = 0, tempsIncomplet = true }) == "temps inconnu" and ns.texteTemps({ temps = 0 }) == nil)
+  Composants.Supprimer(p.id)
+  commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
+end
+print("Composants : temps de fabrication OK")
 
 -- La prochaine fabrication (le bouton d'action en Fabriquer) : celle du projet affiché, tous métiers, dans l'ordre de
 -- dépendance ; la première que les sacs permettent. Le projet de la capture du 25/11 : 4 Dory en bronze (8 barres de bronze et
@@ -897,11 +959,15 @@ do
   poser({ [2841] = 33, [FLUX] = 16 })
   f = ns.prochaineDuProjet(p, "Minage")
   assert(f.etat == "ouvrir" and T(f) == "Ouvrir Forge : 4 × " .. nom(DORY), T(f))
-  requis = { { name = "Enclume", met = false } }
+  -- Sans l'atelier (le jeu le dit, GetRecipeRequirements), même avec les composants : le bouton le dit, rien ne se lance.
+  requis, faisable[99101] = { { name = "Lingots", met = true }, { name = "Enclume", met = false } }, 4
   f = ns.prochaineDuProjet(p, "Forge")
-  assert(f.cle == 99101 and f.etat == "manque" and T(f) == "Il manque Enclume pour 4 × " .. nom(DORY), T(f))
-  assert(C(f) == "Il manque Enclume", C(f))
-  requis, faisable[99101] = {}, 4
+  assert(f.cle == 99101 and f.etat == "atelier" and f.atelier == "Enclume", tostring(f.etat))
+  assert(C(f) == "Requiert : Enclume", C(f))
+  assert(T(f) == "Requiert Enclume pour fabriquer 4 × " .. nom(DORY) .. " : approche-toi de l'atelier (ou prends l'outil)", T(f))
+  requis = { { name = "Enclume" } } -- le jeu ne dit pas : rien de deviné
+  assert(ns.prochaineDuProjet(p, "Forge").etat == "pret", "met absent : prête")
+  requis = {}
   f = ns.prochaineDuProjet(p, "Forge")
   assert(f.etat == "pret" and T(f) == "Fabriquer 4 × " .. nom(DORY), T(f))
   -- Les 4 Dory en sac : tout est fait.

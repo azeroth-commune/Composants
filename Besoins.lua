@@ -138,7 +138,9 @@ function ns.orderNeeds(res)
     end
     if n.made > 0 and n.unknown and n.recipe and not seen[n.recipe.name] and not hors[n] then
       seen[n.recipe.name] = true
-      recipes[#recipes + 1] = { name = n.recipe.name, item = ns.recipeItem(n.recipe.name), product = n.id }
+      -- l'objet qui l'apprend (le patron de la base des recettes, sinon par le nom) ; aucun : elle s'apprend chez un maître
+      recipes[#recipes + 1] = { name = n.recipe.name, item = n.recipe.patron or ns.recipeItem(n.recipe.name), product = n.id,
+        metier = n.recipe.profession }
     end
   end
   table.sort(rows, function(a, b)
@@ -353,9 +355,17 @@ function ns.refreshNeeds()
   if #recipes > 0 then
     frame.y = frame.y + 6
     title("Recettes à apprendre")
+    -- Un objet l'apprend (patron, plans…) : cet objet, « à trouver ». Aucun : un maître l'enseigne, « Apprendre : … ».
+    -- Elle retient en Réunir jusqu'à ce que le socle la voie apprise (la fenêtre du métier ouverte, TRADE_SKILL_LIST_UPDATE).
     for _, r in ipairs(recipes) do
-      local text = r.item and ns.itemLabel(r.item) or ("Recette : " .. r.name .. " |cff999999(objet jamais vu)|r")
-      line(C_Item.GetItemIconByID(r.item or r.product), text, "à trouver", r.item or r.product, "Pour fabriquer " .. ns.itemLabel(r.product))
+      local info = "Pour fabriquer " .. ns.itemLabel(r.product)
+      if r.item then
+        line(C_Item.GetItemIconByID(r.item), ns.itemLabel(r.item), "à trouver", r.item, info)
+      else
+        line(C_Item.GetItemIconByID(r.product), "Apprendre : " .. r.name, "chez le maître", r.product,
+          ("%s\nChez un maître %s ; apprise, ouvre la fenêtre du métier pour qu'elle compte."):format(info,
+            r.metier and ("de " .. r.metier) or "de son métier"))
+      end
     end
   end
   for i = used + 1, #rows do rows[i]:Hide() end
@@ -392,6 +402,7 @@ local function build()
     C_Timer.After(delai, function() pending = false; ns.refreshNeeds() end)
   end
   frame:RegisterEvent("BAG_UPDATE_DELAYED")
+  frame:RegisterEvent("TRADE_SKILL_LIST_UPDATE") -- une recette apprise : le socle la relève à l'ouverture du métier
   frame:SetScript("OnEvent", function() bientot(1) end)
   frame:HookScript("OnSizeChanged", function() bientot(0.1) end)
   frame:HookScript("OnShow", function() ns.refreshNeeds() end) -- (Hook : le socle y fait passer la fenêtre devant)

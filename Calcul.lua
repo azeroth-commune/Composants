@@ -174,7 +174,8 @@ local function fabrication(key, fois, ctx)
   local r = ns.recipes()[key]
   local rec = { key = key, r = r or { reagents = {} }, known = ctx.known[key] }
   local id = rec.r.output
-  local total, parts, missing = composants(rec, fois, ctx, 0, id and { [id] = true } or {})
+  local total, parts, missing = 0, {}, false -- toutes faites (fois = 0, Projet.lua) : plus de composants
+  if fois > 0 then total, parts, missing = composants(rec, fois, ctx, 0, id and { [id] = true } or {}) end
   local qty = fois * math.max(1, rec.r.made_min or 1)
   return { id = id, qty = qty, have = { 0, 0, 0 }, need = qty, cost = total, how = "fabriquer", recipe = rec.r, recipeKey = key,
     known = rec.known, crafts = fois, parts = parts, incomplete = (missing or not r) or nil, craftable = true, fabrication = true }

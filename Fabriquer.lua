@@ -71,11 +71,16 @@ local function possible(f)
 end
 
 -- L'état d'une fabrication, la fenêtre de son métier ouverte : "pret" (n = ce qu'on peut faire d'un coup, au plus fois),
--- "manque" (et le premier manque), "inconnue" (ce perso ne l'a pas apprise).
+-- "atelier" (f.atelier : l'atelier ou l'outil que le jeu dit absent, GetRecipeRequirements, son nom tel quel ; le jeu
+-- refuserait), "manque" (et le premier manque), "inconnue" (ce perso ne l'a pas apprise). Le jeu ne dit rien : rien de deviné.
 local function etatOuvert(f)
   local T = C_TradeSkillUI
   local info = T.GetRecipeInfo(f.cle)
   if not (info and info.learned) then f.etat = "inconnue" return f end
+  local ok, req = pcall(T.GetRecipeRequirements, f.cle)
+  for _, r in ipairs(ok and type(req) == "table" and req or {}) do
+    if type(r) == "table" and r.met == false and r.name then f.etat, f.atelier = "atelier", r.name return f end
+  end
   local n = T.GetCraftableCount(f.cle) or 0
   if n > 0 then f.etat, f.n = "pret", math.min(n, f.fois) else f.etat, f.manque = "manque", manque(f) end
   return f
@@ -123,6 +128,7 @@ function ns.texteToutFabriquer(f, fini, e)
   if f.etat == "pret" then return "Fabriquer " .. combien(f, f.n) end
   if f.etat == "ouvrir" then return ("Ouvrir %s : %s"):format(f.recette.profession or "son métier", combien(f, f.n)) end
   if f.etat == "inconnue" then return "Recette inconnue : " .. (f.recette.name or "?") end
+  if f.etat == "atelier" then return ("Requiert %s pour fabriquer %s : approche-toi de l'atelier (ou prends l'outil)"):format(f.atelier, combien(f, f.n or f.fois)) end
   if f.manque then return ("Il manque %s pour %s"):format(f.manque, combien(f, f.fois)) end
   return "Il manque de quoi faire " .. combien(f, f.fois)
 end
@@ -135,6 +141,7 @@ function ns.texteBouton(f, e)
   if not f then return "Rien à fabriquer" end
   if f.etat == "ouvrir" then return "Ouvre " .. (f.recette.profession or "son métier") end
   if f.etat == "inconnue" then return "Recette inconnue : " .. (f.recette.name or "?") end
+  if f.etat == "atelier" then return "Requiert : " .. f.atelier end
   if f.etat == "manque" then return "Il manque " .. (f.manque or "un composant") end
   local per = f.id and math.max(1, f.recette.made_min or 1) or 1
   return ("%s ×%d"):format(f.id and nom(f.id) or f.recette.name or "?", f.fois * per)
@@ -295,6 +302,8 @@ ev:SetScript("OnEvent", function(_, e, _, _, sort)
     if tf then tf:Hide(); tf:ClearAllPoints(); tf:SetParent(UIParent) end
     return
   end
+  -- Une fabrication réussie compte pour son projet, lancée d'ici ou par « Créer » du jeu (ns.compterFabrication, Projet.lua).
+  if e == "UNIT_SPELLCAST_SUCCEEDED" then ns.compterFabrication(sort) end
   if encours and sort == encours.cle then -- l'avancement de la fabrication lancée
     if e == "UNIT_SPELLCAST_SUCCEEDED" then
       encours.fait, encours.t = encours.fait + 1, GetTime()

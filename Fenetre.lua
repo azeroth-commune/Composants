@@ -112,7 +112,9 @@ local function newOrderTag()
   local t = CreateFrame("Button", nil, content, "TooltipBackdropTemplate") -- le fond des bulles du jeu, bord à la couleur du métier
   t:SetFrameLevel(content:GetFrameLevel() + 5)
   t.text = t:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  t.text:SetPoint("CENTER")
+  t.text:SetPoint("LEFT", 6, 0)
+  t.text:SetJustifyH("LEFT")
+  t.text:SetWordWrap(false) -- tronquée au bord du dessin, par la fin (plus bas) ; la bulle dit tout
   t:SetScript("OnEnter", function(self)
     local o = self.order
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -149,9 +151,10 @@ local function lectureSeule() return ns.phase(projet()) ~= "preparer" end
 
 ---------------------------------------------------------------------------------------------------
 -- Le fil (CONTEXT.md, Phase) « Préparer › Réunir › Fabriquer », en haut des deux vues : la phase du projet affiché se lit
--- sur son bouton (doré, surligné ; les autres en gris) ; clic = aller à cette phase (le Brouillon : lancé d'abord) et
--- montrer sa vue. Fini : aucun surligné, la grande vue dit « Tout est fabriqué ». ns.fil(parent, x, y) le pose et rend la
--- fonction qui le met à jour.
+-- sur son bouton : texte doré, surligné, et non cliquable comme l'onglet choisi du jeu (Disable : le doré seul ne se voyait
+-- pas assez en jeu) ; les autres en gris, clic = aller à cette phase (le Brouillon : lancé d'abord) et montrer sa vue.
+-- Fini : les trois cliquables, et « › Fini » en vert au bout du fil. ns.fil(parent, x, y) le pose et rend la fonction qui
+-- le met à jour.
 local PHASES = {
   { "preparer", "Préparer", "l'arbre et les choix de case ; Lancer passe à Réunir" },
   { "reunir", "Réunir", "ses Besoins seuls ; tout dans les sacs, Fabriquer vient tout seul" },
@@ -181,14 +184,20 @@ function ns.fil(parent, x, y)
       GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:SetMotionScriptsWhileDisabled(true) -- la bulle aussi sur la phase en cours
     bs[i] = b
   end
+  local fini = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  fini:SetPoint("LEFT", bs[#bs], "RIGHT", 6, 0)
+  fini:SetText("› |cff59cc73Fini|r")
   return function()
     local en = ns.phase(projet())
     for i, ph in ipairs(PHASES) do
       if ph[1] == en then bs[i]:SetText("|cffffd100" .. ph[2] .. "|r"); bs[i]:LockHighlight()
       else bs[i]:SetText("|cffbbbbbb" .. ph[2] .. "|r"); bs[i]:UnlockHighlight() end
+      bs[i]:SetEnabled(ph[1] ~= en)
     end
+    fini:SetShown(en == "fini")
   end
 end
 
@@ -366,7 +375,7 @@ function ns.dessinArbre(res, confies)
     local who = {}
     for _, c in ipairs(grp.crafters) do who[#who + 1] = ("%s %d (%d/%d)"):format(c.name, c.rank, c.known, #grp.recipes) end
     grp.label = ("Étape %d · %s%s · %s"):format(grp.step, grp.key, grp.level > 0 and (" · niv. " .. grp.level .. " requis") or "",
-      #who > 0 and table.concat(who, ", ") or "personne de ta liste")
+      #who > 0 and table.concat(who, ", ") or "personne de ta liste") .. (ns.texteTemps(grp) and (" · " .. ns.texteTemps(grp)) or "")
     grp.cards = {}
     for _, n in ipairs(list) do if n.band == grp.key then grp.cards[#grp.cards + 1] = n end end
   end
@@ -631,6 +640,21 @@ local function curve(x1, y1, x2, y2, col, qty, thick)
 end
 
 local headers = {}
+-- Une durée en clair : « 45 s », « 2 min », « 1 h 05 ».
+-- ponytail: la même que celle de Maîtrise (Fenetre.lua) ; au socle au troisième usage.
+function ns.duree(s)
+  s = math.floor(s + 0.5)
+  if s < 60 then return s .. " s" end
+  if s < 3600 then return math.floor(s / 60 + 0.5) .. " min" end
+  return ("%d h %02d"):format(math.floor(s / 3600), math.floor(s % 3600 / 60))
+end
+-- Le temps de fabrication d'un bloc ou du projet (t.temps, t.tempsIncomplet, Projet.lua) : « 2 min », « au moins 2 min » si
+-- une recette n'a pas de temps connu, « temps inconnu » si aucune ; nil s'il n'y a plus rien à fabriquer.
+function ns.texteTemps(t)
+  if (t.temps or 0) > 0 then return (t.tempsIncomplet and "au moins " or "") .. ns.duree(t.temps) end
+  return t.tempsIncomplet and "temps inconnu" or nil
+end
+
 local function header(i, x, text)
   local h = headers[i] or content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   headers[i] = h
@@ -667,12 +691,15 @@ local function refresh()
     header(1, 0, ns.estBrouillon(projet()) and "|cff999999Brouillon vide : Ctrl+clic droit sur un objet n'importe où l'y met ; Lancer en fait un projet.|r"
       or "|cff999999Cherche un objet (ou dépose-le sur la recherche) ; Ctrl+clic droit sur un objet le met au Brouillon.|r")
   else
-    local o, cost = projet(), ns.moneyShort(total) .. (incomplete and " |cffe64d4d+ ?|r" or "")
+    local o = projet()
+    local cost = (total == 0 and not incomplete) and "rien à acheter" or (ns.moneyShort(total) .. (incomplete and " |cffe64d4d+ ?|r" or ""))
     local fini = ns.phase(o) == "fini" and " · |cff59cc73Tout est fabriqué|r" or "" -- la phase Fini
     -- Valeur à l'HV de ce qu'on fabrique, et ce que ça rapporte quand le coût est complet ; rien sans prix.
     local v = res.valeur and (" · vaut %s à l'HV · %s"):format(ns.moneyShort(res.valeur),
       res.rapporte and "rapporte " .. ns.moneySigned(res.rapporte) or "|cffe64d4dcoût incomplet|r") or ""
-    header(1, 0, (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost .. v .. fini)
+    local temps = ns.texteTemps(res)
+    temps = temps and (" · " .. temps .. ((res.temps or 0) > 0 and " de fabrication" or "")) or ""
+    header(1, 0, (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost .. v .. temps .. fini)
   end
   -- L'emplacement du projet entier : une bande à la suite de cette ligne ; confié, la seule case de l'arbre.
   zoneProjet, caseProjet = zoneProjet or newZone(), caseProjet or newZone(true)
@@ -844,6 +871,7 @@ local function refresh()
       orderTags[usedTags] = t
       t.order = o
       local first = o.lines[1]
+      t.text:SetWidth(0)
       t.text:SetText(("pour %s · %d× %s%s"):format(bandName(o.client), o.qty[first], ns.itemLabel(first),
         #o.lines > 1 and (" +" .. (#o.lines - 1)) or ""))
       t:SetSize(t.text:GetStringWidth() + 12, 16)
@@ -853,6 +881,13 @@ local function refresh()
       t:SetPoint("LEFT", shelf[b] or (b.zone:IsShown() and b.zone or b.name), "RIGHT", 6, 0)
       shelf[b] = t
       t:Show()
+      -- Jamais au-delà du bord droit visible (en unités du dessin) : tronquée, cachée s'il reste moins de 40.
+      local l, cl = t:GetLeft(), content:GetLeft()
+      local place = l and cl and scroll:GetWidth() / content:GetScale() - view.x - 4 - (l - cl)
+      if place and t:GetWidth() > place then
+        t:SetWidth(math.max(40, place)); t.text:SetWidth(math.max(40, place) - 12)
+        t:SetShown(place >= 40)
+      end
     end
   end
   for i = usedTags + 1, #orderTags do orderTags[i]:Hide() end
