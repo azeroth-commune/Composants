@@ -95,27 +95,27 @@ test("Tout fabriquer : la prochaine fabrication sur sa case, sa fenêtre, l'avan
         fonte(2)
         ecouler(1)
         assertEquals("2/4…", b:GetText())
-        assertTrue(b.fill:IsShown(), "barre de progression")
-        local function rempli() return b.fill:GetWidth() / (b:GetWidth() - 4) end
+        -- La barre de la case, pas une barre à lui : la part « à fabriquer » en 4 crans, 2 pleins (couleur du stock).
+        assertNil(b.fill, "le bouton : son texte et son action, sans barre")
+        local function rempli() return barre.cran:IsShown() and barre.cran:GetWidth() / barre.cranW or 0 end
         local w = rempli()
-        assertTrue(w > 0.4 and w < 0.6, "à moitié : " .. w)
-        -- 4 fontes : 4 crans, 3 séparations, à leur place.
+        assertTrue(w > 0.45 and w < 0.55, "2 crans sur 4 : " .. w * 4)
         local seps = 0
-        for _, s in ipairs(b.crans) do if s:IsShown() then seps = seps + 1 end end
+        for _, s in ipairs(barre.seps) do if s:IsShown() then seps = seps + 1 end end
         assertEquals(3, seps, "4 crans")
-        local x = (b.crans[2]:GetLeft() - b:GetLeft() - 2) / (b:GetWidth() - 4)
+        local x = (barre.seps[2]:GetLeft() - barre.cran:GetLeft()) / barre.cranW
         assertTrue(x > 0.45 and x < 0.55, "la 2e séparation au milieu : " .. x)
         -- L'incantation du jeu à moitié : le 3e cran à moitié (2,5 sur 4), image après image.
         local uci, secret = UnitCastingInfo, issecretvalue
         local cast = function() local t = GetTime() * 1000 return "Fonte", "", nil, t - 1000, t + 1000, true, 7, false, 3304 end
         UnitCastingInfo = cast
-        b:GetScript("OnUpdate")(b, 0.016)
+        barre:GetScript("OnUpdate")(barre, 0.016)
         w = rempli()
         UnitCastingInfo = uci
         assertTrue(w > 0.6 and w < 0.65, "cran en cours à moitié : " .. w * 4)
         -- Secrète : le cran attend la fin de l'incantation, sans erreur.
         UnitCastingInfo, issecretvalue = cast, function() return true end
-        local okSecret, errSecret = pcall(b:GetScript("OnUpdate"), b, 0.016)
+        local okSecret, errSecret = pcall(barre:GetScript("OnUpdate"), barre, 0.016)
         w = rempli()
         UnitCastingInfo, issecretvalue = uci, secret
         assertTrue(okSecret, tostring(errSecret))
@@ -162,6 +162,18 @@ test("Tout fabriquer : la prochaine fabrication sur sa case, sa fenêtre, l'avan
         assertTrue(b:GetText():find("^Il manque ") ~= nil, b:GetText())
         assertTrue(not b:IsEnabled(), "rien de possible : grisé")
         assertNil(b:GetAttribute("type"))
+        assertTrue(not (ComposantsFrame.clore and ComposantsFrame.clore:IsShown()), "pas fini : rien à clore")
+        assertNil(barre:GetScript("OnUpdate"), "hors fabrication : pas d'OnUpdate")
+        -- Tout fabriqué : « Clore le projet » sur la ligne du projet, sans Maj ; le projet sort de la liste.
+        sacs = { [3576] = 4 }
+        FireEvent("BAG_UPDATE_DELAYED")
+        ecouler(1)
+        local clore = ComposantsFrame.clore
+        assertTrue(clore and clore:IsVisible(), "fini : « Clore le projet »")
+        assertEquals("Clore le projet", clore:GetText())
+        assertTrue(clore:GetLeft() > ligne(content, "Tout est fabriqué"):GetRight(), "au bout de la ligne du projet")
+        clore:Click("LeftButton")
+        assertNil(Composants.Projet(p.id), "clos : le projet n'est plus là")
     end)
     for n in pairs(faux) do T[n] = garde[n] end
     InCombatLockdown, AzerothCommune.Conteneurs, C_Item.GetItemCount = G.InCombatLockdown, G.Conteneurs, G.GetItemCount

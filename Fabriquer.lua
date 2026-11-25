@@ -241,8 +241,8 @@ ns.rafraichirFabriquer = rafraichir
 -- « Tout fabriquer », sur la case de l'arbre qui est la prochaine fabrication du projet affiché : guider sans réfléchir,
 -- quoi fabriquer, combien, dans quelle fenêtre. Un bouton dans la case (à la place de sa ligne de stock), la case cerclée
 -- de lavande. Un clic lance toute la fabrication (CraftRecipe(recette, n) : le jeu enchaîne, comme son « Créer tout ») ;
--- pendant ce temps le bouton se remplit (« 2/4… ») et ne prend pas de second clic ; fini, il passe tout seul à la case
--- suivante. La fenêtre du métier fermée : « Ouvrir <métier> », car l'ouvrir est une action protégée (CastSpell) : c'est
+-- pendant ce temps le bouton compte (« 2/4… », grisé) et ne prend pas de second clic, la barre de la case avance cran par
+-- cran (Fenetre.lua) ; fini, il passe tout seul à la case suivante. La fenêtre du métier fermée : « Ouvrir <métier> », car l'ouvrir est une action protégée (CastSpell) : c'est
 -- un bouton sécurisé dont la macro lance le métier. Jamais deux recettes sur un clic.
 -- Un seul bouton, replacé sur la bonne case hors combat : enfant de la case, il suit le zoom et le glisser du dessin sans
 -- rien faire. Ses attributs ne s'écrivent que hors combat ; en combat il quitte l'arbre (un enfant protégé rendrait le
@@ -252,8 +252,8 @@ local function enCombat() return InCombatLockdown and InCombatLockdown() end
 local function enIncantation() return UnitCastingInfo and UnitCastingInfo("player") ~= nil end
 local LAVANDE = { 0.66, 0.56, 1.00 }
 
--- La barre du bouton en crans, un par fabrication. ponytail: au-delà de 20, sur 104 px, les séparations ne se lisent
--- plus (moins de 5 px par cran) : une barre continue.
+-- La part « à fabriquer » de la barre de la case en crans, un par fabrication. ponytail: au-delà de 20, sur les 142 px de
+-- la barre, les séparations ne se lisent plus (moins de 7 px par cran) : une barre continue.
 function ns.crans(n) return n <= 20 and n or 0 end
 
 -- Le remplissage (0 à 1) : les fabrications finies, plus la part de l'incantation en cours, lue comme la barre
@@ -269,6 +269,14 @@ function ns.avancement(e)
     end
   end
   return math.min(1, (e.fait + part) / e.n)
+end
+
+-- La fabrication lancée par « Tout fabriquer », nil une fois finie : { id, cle, n fabrications, per objets chacune, fait }.
+-- La case de son objet en dessine l'avancement (Fenetre.lua, sa barre).
+function ns.fabricationEnCours()
+  -- ponytail: fin sans événement (le jeu refuse sans incantation) : 3 s sans fonte ni incantation, la fabrication est finie.
+  if encours and (encours.fait >= encours.n or (not enIncantation() and GetTime() - encours.t > 3)) then encours = nil end
+  return encours
 end
 
 local function lancer()
@@ -292,11 +300,6 @@ local function construireTout() -- hors combat seulement : un bouton sécurisé 
   tf:SetAttribute("useOnKeyDown", GetCVarBool and GetCVarBool("ActionButtonUseKeyDown") or false)
   tf:SetMotionScriptsWhileDisabled(true) -- la bulle dit aussi pourquoi il est grisé
   tf:SetScript("PostClick", lancer)
-  -- L'avancement : le bouton se remplit de lavande, cran par cran, comme une barre d'incantation.
-  tf.fill = tf:CreateTexture(nil, "ARTWORK")
-  tf.fill:SetPoint("TOPLEFT", 2, -2); tf.fill:SetPoint("BOTTOMLEFT", 2, 2)
-  tf.fill:SetColorTexture(LAVANDE[1], LAVANDE[2], LAVANDE[3], 0.55)
-  tf.crans = {} -- les séparations entre crans, au-dessus du remplissage
   -- Le contour de la case : textures du bouton, ancrées à sa case (elles partent avec lui en combat).
   tf.contour = {}
   for i = 1, 4 do tf.contour[i] = tf:CreateTexture(nil, "OVERLAY") end
@@ -312,31 +315,6 @@ local function construireTout() -- hors combat seulement : un bouton sécurisé 
   tf:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
--- Le remplissage, à chaque image pendant la fabrication (OnUpdate) : le cran en cours suit l'incantation.
-local function peindre()
-  local x = encours and ns.avancement(encours) or 0
-  tf.fill:SetShown(x > 0)
-  if x > 0 then tf.fill:SetWidth(math.max(1, (tf:GetWidth() - 4) * x)) end
-end
-
--- Les séparations des n crans de la fabrication en cours (aucune hors fabrication, ou au-delà de 20).
-local function crans(n)
-  local w = tf:GetWidth() - 4
-  for i = 1, math.max(n - 1, #tf.crans) do
-    local s = tf.crans[i]
-    if i < n then
-      if not s then
-        s = tf:CreateTexture(nil, "ARTWORK", nil, 7)
-        s:SetColorTexture(0, 0, 0, 0.8); s:SetWidth(1)
-        tf.crans[i] = s
-      end
-      s:ClearAllPoints()
-      s:SetPoint("TOPLEFT", tf, "TOPLEFT", 2 + w * i / n, -2); s:SetPoint("BOTTOMLEFT", tf, "BOTTOMLEFT", 2 + w * i / n, 2)
-      s:Show()
-    elseif s then s:Hide() end
-  end
-end
-
 local function contour(c, k, a)
   local b = tf.contour
   for i = 1, 4 do b[i]:ClearAllPoints(); b[i]:SetColorTexture(k[1], k[2], k[3], a); b[i]:Show() end
@@ -350,8 +328,7 @@ end
 -- ligne du projet, où va le bouton d'une fabrication sans case (un enchantement). Rend la largeur prise sur cette ligne.
 function ns.rafraichirToutFabriquer(carteDe, ligne)
   if enCombat() then return 0 end -- en combat : refait à la sortie (PLAYER_REGEN_ENABLED)
-  -- ponytail: fin sans événement (le jeu refuse sans incantation) : 3 s sans fonte ni incantation, la fabrication est finie.
-  if encours and (encours.fait >= encours.n or (not enIncantation() and GetTime() - encours.t > 3)) then encours = nil end
+  ns.fabricationEnCours()
   local f = ns.prochaineDuProjet(ns.projetCourant(), ProfessionsFrame and ProfessionsFrame:IsShown() and metierOuvert() or nil)
   tfF = f
   local id = encours and encours.id or f and f.id
@@ -384,9 +361,6 @@ function ns.rafraichirToutFabriquer(carteDe, ligne)
     pris = tf:GetWidth() + 10
   end
   tf:SetHeight(15)
-  crans(encours and ns.crans(encours.n) or 0)
-  peindre()
-  tf:SetScript("OnUpdate", encours and peindre or nil)
   tf:Show()
   return pris
 end

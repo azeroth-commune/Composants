@@ -366,14 +366,30 @@ local function newCard()
   return c
 end
 
--- Barre : sacs, banque, autres persos, à fabriquer, à acheter (rouge si sans prix).
+-- Le cran en cours de « Tout fabriquer », image après image (OnUpdate de la case, pendant la fabrication seulement) : les
+-- fabrications finies et l'incantation du jeu, à la couleur du stock, sur la part « à fabriquer » (Fabriquer.lua).
+local function peindreCran(c)
+  local e = ns.fabricationEnCours()
+  local x = e and c.cranW and ns.avancement(e) or 0
+  c.cran:SetShown(x > 0)
+  if x > 0 then c.cran:SetWidth(math.max(1, c.cranW * x)) end
+end
+
+-- Barre : sacs, banque, autres persos, à fabriquer, à acheter (rouge si sans prix). La case de la fabrication en cours
+-- (« Tout fabriquer ») : sa barre telle qu'au lancement, la part « à fabriquer » découpée en crans, un par fabrication.
+-- ponytail: figée au lancement, sinon le stock qui arrive dans les sacs et le compte des fabrications avanceraient deux fois.
 local function bar(c, n)
-  local parts = { n.have[1], n.have[2], n.have[3], n.made, n.need, n.apport }
+  local e = ns.fabricationEnCours and ns.fabricationEnCours()
+  e = e and e.id == n.id and e or nil
+  local parts = { n.have[1], n.have[2], n.have[3], n.made, n.need, n.apport, n.qty }
+  if e then e.barre = e.barre or parts; parts = e.barre end
+  local qty = parts[7]
   local tints = { COLORS[1], COLORS[2], COLORS[3], COLORS.fabriquer, n.unpriced and COLORS.none or COLORS.buy, COLORS.apport }
   local left, wmax = 40, NODE_W - 48
   for i = 1, 6 do
-    local wpx = n.qty > 0 and wmax * parts[i] / n.qty or 0
+    local wpx = qty > 0 and wmax * parts[i] / qty or 0
     local seg = c.seg[i]
+    if i == 4 then c.fab = left end
     if wpx >= 1 then
       local k = tints[i]
       seg:SetColorTexture(k[1], k[2], k[3], 0.9)
@@ -386,6 +402,29 @@ local function bar(c, n)
       seg:Hide()
     end
   end
+  -- Les crans : séparations sur la part « à fabriquer », le remplissage par-dessus.
+  local k = e and qty > 0 and ns.crans(e.n) or 0
+  local cw = e and qty > 0 and wmax * e.per / qty or 0 -- un cran : les objets d'une fabrication
+  c.cranW = e and cw * e.n or nil
+  c.seps = c.seps or {}
+  for i = 1, math.max(k - 1, #c.seps) do
+    local s = c.seps[i]
+    if i < k then
+      if not s then
+        s = c:CreateTexture(nil, "OVERLAY", nil, 7)
+        s:SetColorTexture(0, 0, 0, 0.9); s:SetSize(1, 4)
+        c.seps[i] = s
+      end
+      s:ClearAllPoints(); s:SetPoint("BOTTOMLEFT", c.fab + cw * i, 5); s:Show()
+    elseif s then s:Hide() end
+  end
+  if not c.cran then
+    c.cran = c:CreateTexture(nil, "OVERLAY", nil, 6)
+    c.cran:SetColorTexture(COLORS[1][1], COLORS[1][2], COLORS[1][3], 0.9); c.cran:SetHeight(4)
+  end
+  c.cran:ClearAllPoints(); c.cran:SetPoint("BOTTOMLEFT", c.fab, 5)
+  peindreCran(c)
+  c:SetScript("OnUpdate", e and peindreCran or nil)
 end
 
 local function subText(n)
@@ -506,6 +545,35 @@ local function refresh()
   local pris = ns.rafraichirToutFabriquer(function(id)
     for i = 1, #g.nodes do if cards[i].node.id == id then return cards[i] end end
   end, headers[1])
+  -- Projet fini (« Tout est fabriqué ») : « Clore le projet » au bout de sa ligne, sans Maj (plus rien à perdre) ; le
+  -- « Supprimer ce projet (Maj+clic) » du menu Projets reste pour les autres cas.
+  local clore = #roots > 0 and not ns.estBrouillon(projet()) and ns.projetFini(res)
+  if clore and not frame.clore then
+    local b = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    b:SetNormalFontObject(GameFontNormalSmall); b:SetHighlightFontObject(GameFontHighlightSmall)
+    b:SetText("Clore le projet"); b:SetSize(b:GetTextWidth() + 20, 18)
+    b:SetScript("OnClick", function()
+      ns.supprimerProjet() -- signalé : Handshake efface ses commandes pas encore parties, jamais un contrat
+      refresh()
+    end)
+    b:SetScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:AddLine("Clore le projet")
+      GameTooltip:AddLine("Tout est fabriqué : le projet sort de la liste.", 1, 1, 1, true)
+      if HPour(projet()) then GameTooltip:AddLine("Ses commandes pas encore parties sont effacées ; un contrat, jamais.", 0.6, 0.6, 0.6, true) end
+      GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    frame.clore = b
+  end
+  if frame.clore then
+    frame.clore:SetShown(clore and true or false)
+    if clore then
+      frame.clore:ClearAllPoints()
+      frame.clore:SetPoint("LEFT", headers[1], "RIGHT", 10 + pris, 0)
+      pris = pris + frame.clore:GetWidth() + 10
+    end
+  end
   if #roots > 0 then -- un « Étage » que la ligne du projet recouvrirait est sauté (la case de l'étape dit déjà où l'on est)
     local libre = headers[1]:GetStringWidth() + 24 + pris
     for c = 1, g.cols - 1 do if spacing * c >= libre then header(c + 1, spacing * c, "Étage " .. c) end end
