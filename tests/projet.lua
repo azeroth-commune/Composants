@@ -13,18 +13,47 @@ local function boutons(ok)
     return tous(ComposantsFrame, function(c) return c:GetObjectType() == "Button" and c:IsVisible() and ok(c:GetText() or "") end)
 end
 local function bouton(texte) return boutons(function(t) return t == texte end)[1] end
--- Les menus déroulants de la fenêtre (« Projets », « Plus ») ; choisir(menu, entrée) = un clic sur cette entrée.
+-- Les menus déroulants de la fenêtre (« Plus », de Handshake).
 local function deroulant(nom)
     return tous(ComposantsFrame, function(c) return c.OverrideText ~= nil and c:IsVisible() and c:GetText() == nom end)[1]
 end
-local function choisir(nom, entree)
-    local dd = deroulant(nom)
-    assertNotNil(dd, "le menu « " .. nom .. " »")
-    dd:GenerateMenu()
-    for _, e in dd:GetMenuDescription():EnumerateElementDescriptions() do
-        if MenuUtil.GetElementText(e) == entree then return dd:Pick(e, MenuInputContext.MouseButton, "LeftButton") end
+-- La colonne des projets : ses entrées visibles, de haut en bas (une entrée porte son projet, c.p) ; l'entrée d'un nom ;
+-- ouvrir(nom) = un clic dessus ; le menu de son clic droit (le vrai s'ouvre, puis est refermé), et y choisir une entrée.
+local function entrees()
+    local t = tous(ComposantsFrame, function(c) return c.p ~= nil and c.nom ~= nil and c:IsVisible() end)
+    table.sort(t, function(a, b) return a:GetTop() > b:GetTop() end)
+    return t
+end
+local function colonne(nom)
+    for _, e in ipairs(entrees()) do if e.nom:GetText() == nom then return e end end
+end
+local function ouvrir(nom)
+    local e = colonne(nom)
+    assertNotNil(e, "« " .. nom .. " » dans la colonne")
+    e:Click("LeftButton")
+end
+local function menuDe(nom)
+    local e = colonne(nom)
+    assertNotNil(e, "« " .. nom .. " » dans la colonne")
+    local vrai, racine = MenuUtil.CreateContextMenu, nil
+    MenuUtil.CreateContextMenu = function(owner, gen)
+        racine = MenuUtil.CreateRootMenuDescription(MenuVariants.GetDefaultContextMenuMixin())
+        gen(owner, racine)
+        return vrai(owner, gen)
     end
-    error("pas d'entrée « " .. entree .. " » dans « " .. nom .. " »", 2)
+    local ok, err = pcall(e.Click, e, "RightButton")
+    MenuUtil.CreateContextMenu = vrai
+    Menu.GetManager():CloseMenus()
+    if not ok then error(err, 0) end
+    local t = {}
+    for _, d in racine:EnumerateElementDescriptions() do t[#t + 1] = d end
+    return t
+end
+local function choisir(nom, entree)
+    for _, d in ipairs(menuDe(nom)) do
+        if MenuUtil.GetElementText(d) == entree then return d:Pick(MenuInputContext.MouseButton, "LeftButton") end
+    end
+    error("pas d'entrée « " .. entree .. " » au clic droit sur « " .. nom .. " »", 2)
 end
 -- Le nom du projet affiché en haut de la fenêtre.
 local function affiche(nom)
@@ -79,7 +108,7 @@ test("Composants souscrit à ses types de données ; mon perso par son GUID dans
     assertNotNil(d.persos[UnitGUID("player")], "mon perso sous mon GUID")
 end)
 
-test("projet de démo : l'arbre et ses blocs, le menu « Projets » passe d'un projet à l'autre", function() sansRecettes(function()
+test("projet de démo : l'arbre et ses blocs, la colonne passe d'un projet à l'autre", function() sansRecettes(function()
     SlashCmdList.COMPOSANTS("demo ceinture")
     assertTrue(ComposantsFrame:IsShown())
     assertTrue(affiche("Essai : ceintures multi-métiers"))
@@ -88,9 +117,10 @@ test("projet de démo : l'arbre et ses blocs, le menu « Projets » passe d'un p
     assertTrue(#etapes > 1, "des blocs, un par métier")
     SlashCmdList.COMPOSANTS("demo set")
     assertTrue(affiche("Essai : set en thorium enchanté"))
-    choisir("Projets", "Essai : ceintures multi-métiers")
+    assertNil(deroulant("Projets"), "plus de menu « Projets »")
+    ouvrir("Essai : ceintures multi-métiers")
     assertTrue(affiche("Essai : ceintures multi-métiers"))
-    choisir("Projets", "Essai : set en thorium enchanté")
+    ouvrir("Essai : set en thorium enchanté")
     assertTrue(affiche("Essai : set en thorium enchanté"))
 end) end)
 
@@ -166,21 +196,24 @@ test("Ctrl+clic droit sur un objet : il entre dans le Brouillon, pas dans le pro
     ctrlClicDroit(BRONZE)
     assertEquals(5, q.qty, "déjà là : sa quantité ne bouge pas")
     assertTrue(affiche("Brouillon"), "la fenêtre s'ouvre sur le Brouillon")
-    choisir("Projets", "Vider le Brouillon")
-    assertEquals(0, #b.lines, "vidé par le menu")
+    choisir("Brouillon", "Vider le Brouillon")
+    assertEquals(0, #b.lines, "vidé par le clic droit dans la colonne")
 end) end)
 
-test("le Brouillon : dans le menu « Projets » ; Lancer en fait un projet en Réunir, la petite vue seule", function() sansRecettes(function()
+test("le Brouillon : en tête de la colonne ; Lancer en fait un projet en Réunir, la petite vue seule", function() sansRecettes(function()
     SlashCmdList.COMPOSANTS("demo ceinture")
     local nb = #ComposantsDB.projets
-    choisir("Projets", "Brouillon")
-    choisir("Projets", "Vider le Brouillon")
+    assertEquals("Brouillon", entrees()[1].nom:GetText(), "en tête de la colonne")
+    ouvrir("Brouillon")
+    choisir("Brouillon", "Vider le Brouillon")
     assertEquals(0, #ComposantsDB.brouillon.lines, "vidé")
+    assertEquals("vide", colonne("Brouillon").phase:GetText())
     ctrlClicDroit(BRONZE)
     assertTrue(affiche("Brouillon"))
-    choisir("Projets", "Essai : ceintures multi-métiers")
+    assertEquals("1 ligne", colonne("Brouillon").phase:GetText())
+    ouvrir("Essai : ceintures multi-métiers")
     assertTrue(not affiche("Brouillon"), "un projet choisi : on quitte le Brouillon")
-    choisir("Projets", "Brouillon")
+    ouvrir("Brouillon")
     assertTrue(affiche("Brouillon"))
     bouton("Lancer"):Click()
     assertEquals(nb + 1, #ComposantsDB.projets, "un vrai projet")
@@ -242,14 +275,17 @@ test("Lancer : la petite vue au coin de la grande, le fil, les Besoins du seul p
     assertNil(b.phase, "tenu : Préparer")
     assertTrue(ComposantsFrame:IsShown() and not ComposantsBesoinsFrame:IsShown(), "la grande vue")
     Composants.Tenir(b, nil)
-    -- Un choix de case en Fabriquer : Préparer, Lancer revient.
+    -- Fabriquer : lecture seule, un clic sur une case ne change rien ; « Préparer » dans le fil, Lancer revient.
     fil(ComposantsFrame, "Fabriquer"):Click()
     assertEquals("fabriquer", b.phase)
     assertTrue(enCours(fil(ComposantsFrame, "Fabriquer")) and not bouton("Lancer"), "Fabriquer : pas de Lancer")
     local carte
     for _, c in ipairs(cases()) do if c.node.made > 0 and c.node.kind ~= "target" then carte = c break end end
     carte:Click()
-    assertNil(b.phase, "un choix de case : Préparer")
+    assertNil(b.choix and b.choix[carte.node.id], "Fabriquer : aucun choix de case")
+    assertEquals("fabriquer", b.phase)
+    fil(ComposantsFrame, "Préparer"):Click()
+    assertNil(b.phase, "Préparer")
     assertNotNil(bouton("Lancer"))
 end) end)
 
@@ -295,7 +331,8 @@ test("Réunir → Fabriquer quand tout est dans les sacs, pas à la banque ; Fin
         sacs, banque = { [3576] = 4 }, {}
         Composants.Rafraichir()
         assertEquals("fini", p.phase, "les barres fondues : Fini")
-        assertTrue(ComposantsFrame.clore and ComposantsFrame.clore:IsVisible(), "« Clore le projet »")
+        assertTrue(ComposantsFrame.clore and ComposantsFrame.clore:IsVisible(), "« Clore »")
+        assertEquals("Clore", ComposantsFrame.clore:GetText())
         sacs = {}
         Composants.Rafraichir()
         assertEquals("fini", p.phase, "les barres vendues : Fini gardé")
@@ -321,6 +358,124 @@ test("Réunir → Fabriquer quand tout est dans les sacs, pas à la banque ; Fin
     if Composants.Projet(p.id) then Composants.Supprimer(p.id) end
     if not ok then error(err, 0) end
 end) end)
+
+-- La colonne des projets (#25) : le Brouillon en tête, puis chaque projet avec sa phase ; clic = l'ouvrir dans la vue de sa
+-- phase ; clic droit = Renommer (un champ sur l'entrée) / Supprimer ; le Brouillon : Vider seulement.
+test("la colonne : le Brouillon et les projets avec leur phase ; clic ouvre, clic droit Renommer / Supprimer", function() sansRecettes(function()
+    local a = Composants.NouveauProjet({ name = "Colonne A", lines = { { id = 2841, qty = 2 } } })
+    local b = Composants.NouveauProjet({ name = "Colonne B", lines = { { id = 2841, qty = 1 } } })
+    local ok, err = pcall(function()
+        a.phase = "fabriquer" -- (comme si elle avait été lancée et réunie)
+        Composants.Ouvrir(b.id)
+        local noms, rang = {}, {}
+        for i, e in ipairs(entrees()) do noms[i] = e.nom:GetText(); rang[noms[i]] = i end
+        assertEquals("Brouillon", noms[1], "le Brouillon en tête")
+        assertTrue(rang["Colonne A"] and rang["Colonne B"] and rang["Colonne A"] < rang["Colonne B"], "les projets dans leur ordre")
+        assertEquals("Fabriquer", colonne("Colonne A").phase:GetText())
+        assertEquals("Préparer", colonne("Colonne B").phase:GetText())
+        assertTrue(colonne("Colonne B").trait:IsShown() and not colonne("Colonne A").trait:IsShown(), "celui affiché se voit")
+        -- Clic : la vue de sa phase.
+        ouvrir("Colonne A")
+        assertEquals(a, projet())
+        assertTrue(ComposantsFrame:IsShown() and enCours(fil(ComposantsFrame, "Fabriquer")), "ouvert en Fabriquer")
+        -- Clic droit sur un autre projet : Renommer, sur place.
+        choisir("Colonne B", "Renommer")
+        local champ = tous(ComposantsFrame, function(c) return c:GetObjectType() == "EditBox" and c:IsVisible() and c:GetText() == "Colonne B" end)[1]
+        assertNotNil(champ, "le champ du nom, sur l'entrée")
+        champ:SetText("Colonne B bis")
+        champ:GetScript("OnEnterPressed")(champ)
+        assertEquals("Colonne B bis", b.name)
+        assertNotNil(colonne("Colonne B bis"), "renommé dans la colonne")
+        assertTrue(not champ:IsShown(), "le champ refermé")
+        assertEquals(a, projet(), "renommer n'ouvre pas")
+        -- Supprimer un autre projet : celui affiché reste.
+        choisir("Colonne B bis", "Supprimer")
+        assertNil(Composants.Projet(b.id), "supprimé")
+        assertNil(colonne("Colonne B bis"))
+        assertEquals(a, projet(), "le projet affiché reste")
+        -- Le Brouillon : ni Renommer, ni Supprimer.
+        local textes = {}
+        for _, d in ipairs(menuDe("Brouillon")) do textes[#textes + 1] = MenuUtil.GetElementText(d) end
+        assertEquals("Vider le Brouillon", table.concat(textes, ", "))
+    end)
+    for _, p in ipairs({ a, b }) do if Composants.Projet(p.id) then Composants.Supprimer(p.id) end end
+    if not ok then error(err, 0) end
+end) end)
+
+-- Un seul bouton d'action en bas, qui suit la phase (#25) ; en Fabriquer, l'arbre en lecture seule et pas de ligne d'ajout ;
+-- plus d'options ni de légende dans la fenêtre (les options : la page Composants des réglages du socle).
+local function actions()
+    local t = {}
+    for _, b in ipairs({ ComposantsFrame.lancerB, ComposantsFrame.clore, ComposantsToutFabriquer }) do
+        if b and b:IsVisible() then t[#t + 1] = b end
+    end
+    return t
+end
+local function quantites()
+    return tous(ComposantsFrame, function(c) return c:GetObjectType() == "EditBox" and c:IsVisible() and c:GetParent().node ~= nil end)
+end
+local function recherche()
+    return tous(ComposantsFrame, function(c) return c:GetObjectType() == "EditBox" and c.recherche ~= nil end)[1]
+end
+test("un seul bouton d'action, selon la phase ; Fabriquer en lecture seule ; ni options ni légende", function() sansRecettes(function()
+    local p = Composants.NouveauProjet({ name = "Lecture seule", lines = { { id = 2841, qty = 2 } } })
+    local ok, err = pcall(function()
+        Composants.Ouvrir(p.id)
+        local acts = actions()
+        assertEquals(1, #acts, "Préparer : un bouton d'action")
+        assertEquals(ComposantsFrame.lancerB, acts[1])
+        assertEquals("Lancer", acts[1]:GetText())
+        assertTrue(recherche():IsVisible(), "Préparer : la ligne d'ajout")
+        assertNil(bouton("Ajouter"), "plus de bouton « Ajouter »")
+        assertTrue(#quantites() > 0, "Préparer : la quantité de la ligne se tape")
+        local signes = 0
+        for _, c in ipairs(cases()) do if (c.toggle:GetText() or "") ~= "" then signes = signes + 1 end end
+        assertTrue(signes > 0, "Préparer : des « + » / « – »")
+        fil(ComposantsFrame, "Fabriquer"):Click()
+        assertEquals("fabriquer", p.phase)
+        acts = actions()
+        assertEquals(1, #acts, "Fabriquer : un bouton d'action")
+        assertEquals(ComposantsToutFabriquer, acts[1], "la prochaine fabrication")
+        assertTrue(not recherche():IsVisible(), "Fabriquer : pas de ligne d'ajout")
+        assertEquals(0, #quantites(), "Fabriquer : pas de quantité à taper")
+        for _, c in ipairs(cases()) do assertEquals("", c.toggle:GetText() or "", "Fabriquer : ni « + » ni « – »") end
+        for _, c in ipairs(cases()) do
+            if c.node.made > 0 and c.node.kind ~= "target" then
+                c:Click()
+                assertNil(p.choix and p.choix[c.node.id], "Fabriquer : un clic ne choisit rien")
+            end
+        end
+        -- Plus d'options ni de légende dans la fenêtre.
+        assertEquals(0, #tous(ComposantsFrame, function(c) return c:GetObjectType() == "CheckButton" end), "plus de cases à cocher")
+        for _, r in ipairs({ ComposantsFrame:GetRegions() }) do
+            local t = r.GetText and r:IsShown() and r:GetText()
+            assertTrue(not (t == "à acheter" or t == "sans prix" or t == "autres persos"), "une légende : " .. tostring(t))
+        end
+    end)
+    Composants.Supprimer(p.id)
+    if not ok then error(err, 0) end
+end) end)
+
+test("les options du calcul : sur la page Composants des réglages fusionnés du socle", function()
+    local r
+    for _, x in ipairs(AzerothCommune.regroupes) do if x.nom == "Composants" then r = x end end
+    assertNotNil(r, "Composants regroupé")
+    assertType("function", r.reglages)
+    local page = CreateFrame("Frame")
+    local ancre = CreateFrame("Button", nil, page)
+    ancre:SetSize(10, 10); ancre:SetPoint("TOPLEFT")
+    r.reglages(page, ancre)
+    local cases = tous(page, function(c) return c:GetObjectType() == "CheckButton" end)
+    assertEquals(4, #cases, "sacs, banque, autres persos, recettes pas apprises")
+    local cb
+    for _, c in ipairs(cases) do if c.cle == "unlearned" then cb = c end end
+    local avant = ComposantsDB.options.unlearned
+    assertEquals(avant and true or false, cb:GetChecked() and true or false)
+    cb:Click()
+    assertEquals(not avant, ComposantsDB.options.unlearned and true or false, "cochée : l'option change")
+    cb:Click()
+    assertEquals(avant and true or false, ComposantsDB.options.unlearned and true or false)
+end)
 
 -- La Récolte (#18) : sur une ligne qui manque encore, la bascule « Achat » / « Récolte » ; l'état se lit sur le bouton.
 test("Besoins : la bascule « Achat » / « Récolte » d'une ligne", function() sansRecettes(function()
@@ -448,8 +603,8 @@ else
     test("avec Handshake : rien à commander sur le Brouillon", function() sansRecettes(function()
         SlashCmdList.COMPOSANTS("demo ceinture")
         assertTrue(#boutons(function(t) return t == "Commander" end) > 0, "témoin : « Commander » sur un projet")
-        choisir("Projets", "Brouillon")
-        choisir("Projets", "Vider le Brouillon")
+        ouvrir("Brouillon")
+        choisir("Brouillon", "Vider le Brouillon")
         ctrlClicDroit("|cffffffff|Hitem:10721::::::::1:::::::::|h[Ceinture]|h|r") -- un objet aux blocs nombreux
         assertTrue(affiche("Brouillon"))
         assertTrue(#tous(ComposantsFrame, function(c) return c.grp ~= nil and c:IsShown() end) > 0, "des blocs dessinés")
@@ -459,7 +614,7 @@ else
         assertNil(deroulant("Plus"), "le menu « Plus » sur le Brouillon")
         assertEquals(0, #commandes(), "pas de liste de commandes")
         assertNil(HandshakeDB.commandes and HandshakeDB.commandes[ComposantsDB.brouillon.id], "rien de rangé chez Handshake")
-        choisir("Projets", "Vider le Brouillon")
+        choisir("Brouillon", "Vider le Brouillon")
     end) end)
 
     test("avec Handshake : Ctrl+clic sur une case, « j'apporte » marque l'apport de la commande", function() sansRecettes(function()

@@ -669,7 +669,7 @@ do
   ns.ctrlClicDroit(link(2841, "Barre de bronze"))
   assert(#b.lines == 2 and #p.lines == 0, "deux objets au Brouillon")
   ns.openCraftWindow = ouvrir
-  -- Hors de la liste des projets ; on l'affiche par le menu « Projets ».
+  -- Hors de la liste des projets ; on l'affiche par la colonne des projets.
   for _, q in ipairs(Composants.Projets()) do assert(q ~= b, "le Brouillon dans la liste des projets") end
   assert(ns.ouvrirBrouillon() == b and ns.projetCourant() == b, "le Brouillon s'affiche")
   local n = #Composants.Projets()
@@ -745,70 +745,7 @@ do
 end
 print("Composants : lignes fabrication d'un projet tenu OK")
 
--- « Fabriquer » (#14) : la prochaine fabrication d'un projet tenu pour le métier ouvert, du bas de l'arbre vers le haut ;
--- son état lu dans la fenêtre de métier (C_TradeSkillUI) ; le compte avance avec les sacs, comme l'arbre.
-do
-  local function prix(pc) return { tiers = { { price = pc, qty = 999 } } } end
-  local sacs = { [2770] = 10 }
-  local function poser()
-    donnees({ hv = { [2840] = prix(100), [3576] = prix(10), [2770] = prix(2), [10940] = prix(50) },
-      recettes = {
-        [2659] = { name = "Fonte du bronze", output = 2841, made_min = 2, profession = "Minage", reagents = { { id = 2840, qty = 1 }, { id = 3576, qty = 1 } } },
-        [2657] = { name = "Fonte du cuivre", output = 2840, profession = "Minage", reagents = { { id = 2770, qty = 1 } } },
-        [7420] = { name = "Enchanter le plastron - Vie mineure", profession = "Enchantement", reagents = { { id = 10940, qty = 1 } } } },
-      sacs = sacs })
-    AzerothCommuneDB.chars[MOI].recipes = { Minage = { rank = 75, known = { [2659] = true, [2657] = true } } }
-  end
-  poser()
-  local appris, faisable = { [2659] = true, [2657] = true, [7420] = true }, { [2657] = 10, [7420] = 2 }
-  C_TradeSkillUI = {
-    GetRecipeInfo = function(k) return { learned = appris[k] or false } end,
-    GetCraftableCount = function(k) return faisable[k] or 0 end,
-    GetRecipeRequirements = function() return {} end,
-  }
-  C_Item.GetItemCount = function(id) return sacs[id] or 0 end
-  local p = Composants.NouveauProjet({ name = "Tranche Minage" })
-  Composants.Tenir(p, "Maîtrise : Minage de 50 à 75", { { recette = 2659, fois = 5 }, { recette = 7420, fois = 3 } })
-  local f = ns.prochaineFabrication("Minage")
-  assert(f and f.p == p and f.cle == 2657 and f.fois == 5 and f.etat == "pret" and f.n == 5,
-    "d'abord le cuivre à fondre (5 barres pour 5 bronzes), avant le bronze qui en a besoin")
-  assert(ns.texteFabriquer(f):find("^Fabriquer .+ ×5$"), ns.texteFabriquer(f))
-  -- Le compte avance : 3 barres de cuivre arrivent dans les sacs, il en reste 2 à fondre ; 5, on passe au bronze.
-  sacs[2840] = 3; poser()
-  f = ns.prochaineFabrication("Minage")
-  assert(f.cle == 2657 and f.fois == 2, "3 barres en sac : 2 à fondre")
-  sacs[2840] = 5; poser()
-  f = ns.prochaineFabrication("Minage")
-  assert(f.cle == 2659 and f.fois == 5 and f.etat == "manque" and f.manque == ns.itemLabel(3576), "le bronze : l'étain manque")
-  assert(ns.texteFabriquer(f) == "Il manque " .. ns.itemLabel(3576), ns.texteFabriquer(f))
-  appris[2659] = false
-  f = ns.prochaineFabrication("Minage")
-  assert(f.etat == "inconnue" and ns.texteFabriquer(f) == "Recette inconnue : Fonte du bronze", ns.texteFabriquer(f))
-  -- Une autre fenêtre de métier : la prochaine est ailleurs, le bouton le dit.
-  f = ns.prochaineFabrication("Couture")
-  assert(f.etat == "ailleurs" and ns.texteFabriquer(f) == "Ouvre le Minage", ns.texteFabriquer(f))
-  -- Un enchantement (pas d'objet produit) : sa recette, par son nom.
-  f = ns.prochaineFabrication("Enchantement")
-  assert(f.cle == 7420 and f.etat == "pret" and f.n == 2 and f.id == nil, "l'enchantement, 2 faisables sur 3")
-  assert(ns.texteFabriquer(f) == "Fabriquer Enchanter le plastron - Vie mineure ×3", ns.texteFabriquer(f))
-  -- Un projet tenu depuis un autre perso (la tranche de Belegard, vue en jouant Riwanon) n'est pas proposé, ni pour son
-  -- métier ni comme « Ouvre le … » ; il revient quand on rejoue ce perso.
-  assert(p.tenuPar == UnitGUID("player"), "tenu depuis le perso connecté : noté")
-  local G0 = UnitGUID
-  UnitGUID = function(u) if u == "player" then return "Player-6942-00000A17" end end
-  assert(ns.prochaineFabrication("Minage") == nil and ns.prochaineFabrication("Couture") == nil, "le projet d'un autre perso : rien")
-  UnitGUID = G0
-  assert(ns.prochaineFabrication("Minage"), "de retour sur ce perso : de nouveau proposé")
-  -- Lâché : plus rien à fabriquer.
-  Composants.Tenir(p, nil)
-  assert(p.tenuPar == nil, "lâché : plus de perso noté")
-  assert(ns.prochaineFabrication("Minage") == nil, "aucun projet tenu : pas de bouton")
-  C_TradeSkillUI, C_Item.GetItemCount = nil, nil
-  commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
-end
-print("Composants : Fabriquer, la prochaine fabrication d'un projet tenu OK")
-
--- « Tout fabriquer » (fenêtre des projets) : la prochaine fabrication du projet affiché, tous métiers, dans l'ordre de
+-- La prochaine fabrication (le bouton d'action en Fabriquer) : celle du projet affiché, tous métiers, dans l'ordre de
 -- dépendance ; la première que les sacs permettent. Le projet de la capture du 25/11 : 4 Dory en bronze (8 barres de bronze et
 -- 4 catalyseurs chacune), 7 barres de bronze, 13 de cuivre, 9 d'étain et 4 minerais d'étain en sac.
 do
@@ -834,25 +771,25 @@ do
     GetRecipeRequirements = function() return requis end,
   }
   C_Item.GetItemCount = function(id) return sacs[id] or 0 end
-  local T, C = ns.texteToutFabriquer, ns.texteCase -- la phrase (la bulle), le texte court (le bouton sur la case)
+  local T, C = ns.texteToutFabriquer, ns.texteBouton -- la phrase (la bulle), le libellé du bouton d'action
   poser({ [2841] = 7, [2840] = 13, [3576] = 9, [2771] = 4 })
   local p = Composants.NouveauProjet({ name = "Dory", lines = { { id = DORY, qty = 4 } } })
   -- Aucune fenêtre de métier : d'abord les 4 barres d'étain (le bas de l'arbre), dans la fenêtre du Minage.
   local f = ns.prochaineDuProjet(p, nil)
   assert(f and f.cle == 3304 and f.etat == "ouvrir" and f.n == 4, "d'abord l'étain, fenêtre à ouvrir")
   assert(T(f) == "Ouvrir Minage : 4 × " .. nom(3576), T(f))
-  assert(C(f) == "Ouvrir Minage", C(f))
+  assert(C(f) == "Ouvre Minage", C(f))
   -- Le Minage ouvert, le jeu confirme : on fabrique les 4.
   faisable[3304] = 4
   f = ns.prochaineDuProjet(p, "Minage")
   assert(f.cle == 3304 and f.etat == "pret" and f.n == 4 and T(f) == "Fabriquer 4 × " .. nom(3576), T(f))
-  assert(C(f) == "Fabriquer 4", C(f))
+  assert(C(f) == nom(3576) .. " ×4", C(f)) -- ce qu'il reste à faire, en objets
   -- Les 4 barres d'étain arrivent : le bronze, 13 fontes de 2 barres.
   poser({ [2841] = 7, [2840] = 13, [3576] = 13 })
   faisable[2659] = 13
   f = ns.prochaineDuProjet(p, "Minage")
   assert(f.cle == 2659 and f.etat == "pret" and f.n == 13 and T(f) == "Fabriquer 26 × " .. nom(2841), T(f))
-  assert(f.id == 2841 and C(f) == "Fabriquer 26", C(f)) -- f.id : la case qui porte l'action
+  assert(f.id == 2841 and C(f) == nom(2841) .. " ×26", C(f)) -- f.id : la case cerclée ; 13 fontes de 2 barres
   -- Le bronze fondu : les Dory, mais le catalyseur manque (à acheter) ; rien n'est proposé.
   poser({ [2841] = 33 })
   f = ns.prochaineDuProjet(p, "Minage")
@@ -880,14 +817,16 @@ do
   f = ns.prochaineDuProjet(p, "Minage")
   assert(f.cle == 3304 and f.etat == "manque" and T(f) == "Il manque " .. nom(2771) .. " pour 16 × " .. nom(3576), T(f))
   assert(not ns.projetFini(ns.projetArbre(p)), "pas fini")
-  assert(C({ etat = "inconnue", recette = {} }) == "Recette inconnue" and C({ etat = "manque", recette = {} }) == "Il manque un composant")
+  assert(C({ etat = "inconnue", recette = {} }) == "Recette inconnue : ?" and C({ etat = "manque", recette = {} }) == "Il manque un composant")
+  assert(C({ etat = "pret", fois = 3, recette = { name = "Enchanter le plastron" } }) == "Enchanter le plastron ×3", "un enchantement : sa recette")
+  assert(C(nil) == "Rien à fabriquer")
   -- Un projet vide : rien à fabriquer.
   f, fini = ns.prochaineDuProjet(Composants.NouveauProjet({ name = "Vide" }), nil)
   assert(f == nil and not fini and T(f, fini) == "Rien à fabriquer", T(f, fini))
   assert(not ns.projetFini(ns.projetArbre(Composants.NouveauProjet({ name = "Vide 2" }))), "vide : pas « fini »")
   -- En cours : l'avancement, en objets.
   assert(T(nil, nil, { nom = "Barre de bronze", per = 2, n = 13, fait = 2 }) == "Barre de bronze 4/26…")
-  assert(C(nil, { nom = "Barre de bronze", per = 2, n = 13, fait = 2 }) == "4/26…")
+  assert(C(nil, { nom = "Barre de bronze", per = 2, n = 13, fait = 2 }) == "Barre de bronze 4/26…")
   -- La barre en crans, un par fabrication ; au-delà de 20, une barre continue (les séparations ne se liraient plus).
   assert(ns.crans(13) == 13 and ns.crans(20) == 20 and ns.crans(21) == 0, "13 fontes : 13 crans ; 21 : aucun")
   -- Le remplissage : les fabrications finies, plus le cran en cours au rythme de l'incantation du jeu (UnitCastingInfo).
@@ -912,7 +851,7 @@ do
   C_TradeSkillUI, C_Item.GetItemCount = nil, nil
   commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
 end
-print("Composants : Tout fabriquer, la prochaine fabrication du projet affiché, sur sa case OK")
+print("Composants : la prochaine fabrication du projet affiché, le bouton d'action OK")
 
 -- L'infobulle des objets (#16) : « Utilisé dans » (les projets dont l'arbre le demande) et « Fabriqué par » (mes persos qui
 -- connaissent une recette qui le fabrique), rien pour un objet qui n'entre dans rien ; le cache suit les projets.

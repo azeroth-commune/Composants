@@ -1,19 +1,21 @@
 -- Composants, la fenêtre (/composants) : la grande vue d'un projet, celle de ses phases Préparer, Fabriquer et Fini (la petite,
 -- Réunir, est dans Besoins.lua ; une seule des deux visible, ns.montrerVue) ; le fil « Préparer › Réunir › Fabriquer » en
--- haut des deux. Un projet en haut (Projet.lua), son arbre par étages dessous ; avec Handshake, la
--- liste de ses commandes entre les deux, « Commander » sur chaque bloc et Ctrl+clic « j'apporte » sur une case, dessinés
--- ici en appelant l'API publique de Handshake (global Handshake, voir son README) : sans lui, rien de tout ça.
+-- haut des deux. À gauche, la colonne des projets (le Brouillon en tête) ; à droite, le nom du projet et le fil, la ligne
+-- d'ajout (Préparer seulement), son arbre par étages, et en bas un seul bouton d'action, qui suit la phase : « Lancer »,
+-- la prochaine fabrication (Fabriquer.lua), « Clore ». En Fabriquer et Fini, l'arbre est en lecture seule. Avec Handshake,
+-- la liste de ses commandes sous la ligne d'ajout, « Commander » sur chaque bloc et Ctrl+clic « j'apporte » sur une case,
+-- dessinés ici en appelant l'API publique de Handshake (global Handshake, voir son README) : sans lui, rien de tout ça.
 -- Colonne 0 : ce qu'on suit. Étage 1 : ce qu'il faut pour le fabriquer. Étage 2 : ce qu'il faut pour ces
 -- composants, etc. Une seule case par objet : la barre de bronze du marteau et de la dague, c'est la même case,
 -- rangée à l'étage le plus profond où elle sert.
 -- Un objet est décomposé quand c'est moins cher d'après le dernier scan de l'HV ; « + » le décompose quand même,
 -- « – » l'achète tout fait (clic encore = retour au calcul). Ce choix de case appartient au projet affiché.
 -- Barre sous chaque case : vert = dans tes sacs, bleu = à ta banque, violet = chez tes autres persos,
--- orange = à fabriquer, gris = à acheter, rouge = ni prix ni recette. Le stock est partagé : ce qu'un suivi
--- prend n'est plus là pour le suivant.
+-- orange = à fabriquer, gris = à acheter, rouge = ni prix ni recette (pas de légende : la bulle de la case le dit).
 local _, ns = ...
 
 local W, H_FEN = 1000, 690
+local COL_W, X0 = 180, 200 -- la colonne des projets, et le bord gauche de ce qui est à sa droite
 local NODE_W, NODE_H, GAP, TOP = 190, 42, 18, 36 -- l'écart et le haut laissent la place au nom des artisans
 local RELAY = 14 -- place réservée à un lien qui traverse un étage
 local BAND_GAP = 30 -- entre les rectangles de deux artisans (la place de leur nom)
@@ -76,6 +78,8 @@ local function opts() return ns.db().options end
 -- Affichage seulement (« il le fournit », « mon prix ») : ce qui se modifie, la fenêtre le demande au projet (ns.projetPeut).
 local function replying() return HPour(projet()) and H().EstReponse(projet()) end -- « je réponds » : la Réponse de Handshake
 local function lignes() return (ns.projetPeut(projet(), "lignes")) end -- ajouter, retirer, changer une quantité
+-- Fabriquer et Fini : l'arbre en lecture seule (ni « + », ni quantités, ni choix de case) ; « Préparer » dans le fil pour changer.
+local function lectureSeule() return ns.phase(projet()) ~= "preparer" end
 -- Avec Handshake, la commande choisie dans le projet affiché (1 = tout le projet) : Joueur, Offre, « Préparer la demande »
 -- et « En clair » portent sur elle. Un autre projet affiché : retour à 1.
 local choisie = {}
@@ -377,27 +381,27 @@ local function newCard()
     end
     if n.incomplete then GameTooltip:AddLine("Coût incomplet : un composant n'a ni prix ni recette (en rouge)", 0.9, 0.3, 0.3) end
     if n.partial then GameTooltip:AddLine("Pas assez en vente à l'HV : le reste est compté au dernier prix vu", 0.9, 0.6, 0.3) end
-    local t = toggleOf(n)
+    local t = not lectureSeule() and toggleOf(n)
     if t == "reset" then GameTooltip:AddLine("Choix forcé à la main — clic : revenir au calcul des prix", 0.66, 0.56, 1)
     elseif t == "acheter" then GameTooltip:AddLine("Clic : l'acheter tout fait au lieu de le fabriquer", 0.6, 0.6, 0.6)
     elseif t == "fabriquer" then
       GameTooltip:AddLine(n.need == 0 and "Clic : le fabriquer au lieu de prendre ton stock" or "Clic : le décomposer (fabriquer) même si c'est plus cher", 0.6, 0.6, 0.6)
     end
-    if HPour(projet()) then -- l'apport : un terme des commandes Handshake du projet
+    if HPour(projet()) and not lectureSeule() then -- l'apport : un terme des commandes Handshake du projet
       local who = replying() and "Il le fournit" or "Tu le fournis"
       if n.apport > 0 then GameTooltip:AddLine(("%s : %d (Ctrl+clic pour le reprendre)"):format(who, n.apport), 0.3, 0.8, 0.85)
       elseif n.kind ~= "target" then GameTooltip:AddLine("Ctrl+clic : " .. who:lower(), 0.6, 0.6, 0.6) end
     end
-    if n.kind == "target" and lignes() then GameTooltip:AddLine("Clic droit : ne plus suivre", 0.6, 0.6, 0.6) end
+    if n.kind == "target" and lignes() and not lectureSeule() then GameTooltip:AddLine("Clic droit : ne plus suivre", 0.6, 0.6, 0.6) end
     GameTooltip:Show()
   end)
   c:SetScript("OnLeave", function(self) self:SetBackdropBorderColor(1, 1, 1, 0.08); GameTooltip:Hide() end)
   c:SetScript("OnClick", function(self, button)
     local n = self.node
+    if IsShiftKeyDown() and button ~= "RightButton" then return openRecipe(n) end
+    if lectureSeule() then return end
     if button == "RightButton" then
       if n.kind ~= "target" or not ns.projetRetirer(projet(), n.index) then return end
-    elseif IsShiftKeyDown() then
-      return openRecipe(n)
     elseif IsControlKeyDown() and n.kind ~= "target" then -- « j'apporte » : un apport des commandes Handshake
       if not HPour(projet()) then return end
       H().Apporter(projet(), n.id, n.apport == 0)
@@ -412,7 +416,7 @@ local function newCard()
   return c
 end
 
--- Le cran en cours de « Tout fabriquer », image après image (OnUpdate de la case, pendant la fabrication seulement) : les
+-- Le cran en cours de la fabrication lancée, image après image (OnUpdate de la case, pendant la fabrication seulement) : les
 -- fabrications finies et l'incantation du jeu, à la couleur du stock, sur la part « à fabriquer » (Fabriquer.lua).
 local function peindreCran(c)
   local e = ns.fabricationEnCours()
@@ -422,7 +426,7 @@ local function peindreCran(c)
 end
 
 -- Barre : sacs, banque, autres persos, à fabriquer, à acheter (rouge si sans prix). La case de la fabrication en cours
--- (« Tout fabriquer ») : sa barre telle qu'au lancement, la part « à fabriquer » découpée en crans, un par fabrication.
+-- (le bouton d'action) : sa barre telle qu'au lancement, la part « à fabriquer » découpée en crans, un par fabrication.
 -- ponytail: figée au lancement, sinon le stock qui arrive dans les sacs et le compte des fabrications avanceraient deux fois.
 local function bar(c, n)
   local e = ns.fabricationEnCours and ns.fabricationEnCours()
@@ -474,7 +478,7 @@ local function bar(c, n)
 end
 
 local function subText(n)
-  local s = n.kind == "target" and "" or ("×" .. n.qty) -- la commande a son champ de quantité
+  local s = (n.kind ~= "target" or lectureSeule()) and ("×" .. n.qty) or "" -- en Préparer, la ligne a son champ de quantité
   if stocked(n) > 0 then s = s .. (" |cff59cc73%d stock|r"):format(stocked(n)) end
   if n.made > 0 then s = s .. (n.unknown and " |cffe64d4d%d à fab.|r" or " |cffe6a640%d à fab.|r"):format(n.made) end
   if n.need > 0 then
@@ -540,7 +544,7 @@ local function refresh()
 
   -- Les étages s'étalent sur la largeur ; trop nombreux, le dessin rétrécit pour tenir (puis molette pour zoomer).
   local avail = scroll:GetWidth()
-  if avail < 100 then avail = W - 28 end -- pas encore mis en page
+  if avail < 100 then avail = W - X0 - 14 end -- pas encore mis en page
   local spacing = g.cols > 1 and math.max(NODE_W + 60, (avail - NODE_W - 2 * MARGIN) / (g.cols - 1)) or 0
   local width = NODE_W + spacing * (g.cols - 1) + 2 * MARGIN
   view.fit = math.min(1, avail / width)
@@ -550,7 +554,7 @@ local function refresh()
   for _, h in ipairs(headers) do h:Hide() end
   if #roots == 0 then
     header(1, 0, ns.estBrouillon(projet()) and "|cff999999Brouillon vide : Ctrl+clic droit sur un objet n'importe où l'y met ; Lancer en fait un projet.|r"
-      or "|cff999999Tape un nom (suggestions) ou dépose un objet, puis Ajouter ; Ctrl+clic droit sur un objet le met au Brouillon.|r")
+      or "|cff999999Cherche un objet (ou dépose-le sur la recherche) ; Ctrl+clic droit sur un objet le met au Brouillon.|r")
   else
     local o, cost = projet(), ns.moneyShort(total) .. (incomplete and " |cffe64d4d+ ?|r" or "")
     local fini = ns.phase(o) == "fini" and " · |cff59cc73Tout est fabriqué|r" or "" -- la phase Fini
@@ -577,52 +581,23 @@ local function refresh()
     c.icon:SetTexture(C_Item.GetItemIconByID(n.id))
     c.name:SetText(ns.itemLabel(n.id))
     c.sub:SetText((subText(n):gsub("^ ", "")))
-    local target = n.kind == "target"
+    local target = n.kind == "target" and not lectureSeule() -- son champ de quantité, en Préparer seulement
     c.qty:SetShown(target); c.qty:SetEnabled(target and lignes())
     if target and not c.qty:HasFocus() then c.qty:SetText(n.qty) end
     c.sub:SetPoint("TOPLEFT", target and 80 or 40, -20)
     local t = toggleOf(n)
-    local sign = (n.made > 0 and "–") or (t and "+") or ""
+    local sign = lectureSeule() and "" or (n.made > 0 and "–") or (t and "+") or ""
     c.toggle:SetText(n.choix and ("|cffa98fff" .. sign .. "|r") or sign)
     bar(c, n)
     c:Show()
   end
   for i = #g.nodes + 1, #cards do cards[i]:Hide() end
-  -- « Tout fabriquer » sur la case de la prochaine fabrication (Fabriquer.lua) ; sans case, au bout de la ligne du projet.
-  local pris = ns.rafraichirToutFabriquer(function(id)
+  -- En Fabriquer, le bouton d'action en bas nomme la prochaine fabrication, sa case cerclée (Fabriquer.lua).
+  ns.rafraichirToutFabriquer(function(id)
     for i = 1, #g.nodes do if cards[i].node.id == id then return cards[i] end end
-  end, headers[1])
-  -- Phase Fini (« Tout est fabriqué ») : « Clore le projet » au bout de sa ligne, sans Maj (plus rien à perdre) ; le
-  -- « Supprimer ce projet (Maj+clic) » du menu Projets reste pour les autres cas.
-  local clore = ns.phase(projet()) == "fini"
-  if clore and not frame.clore then
-    local b = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    b:SetNormalFontObject(GameFontNormalSmall); b:SetHighlightFontObject(GameFontHighlightSmall)
-    b:SetText("Clore le projet"); b:SetSize(b:GetTextWidth() + 20, 18)
-    b:SetScript("OnClick", function()
-      ns.supprimerProjet() -- signalé : Handshake efface ses commandes pas encore parties, jamais un contrat
-      ns.montrerVue() -- le projet suivant, dans la vue de sa phase
-    end)
-    b:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:AddLine("Clore le projet")
-      GameTooltip:AddLine("Tout est fabriqué : le projet sort de la liste.", 1, 1, 1, true)
-      if HPour(projet()) then GameTooltip:AddLine("Ses commandes pas encore parties sont effacées ; un contrat, jamais.", 0.6, 0.6, 0.6, true) end
-      GameTooltip:Show()
-    end)
-    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    frame.clore = b
-  end
-  if frame.clore then
-    frame.clore:SetShown(clore and true or false)
-    if clore then
-      frame.clore:ClearAllPoints()
-      frame.clore:SetPoint("LEFT", headers[1], "RIGHT", 10 + pris, 0)
-      pris = pris + frame.clore:GetWidth() + 10
-    end
-  end
+  end)
   if #roots > 0 then -- un « Étage » que la ligne du projet recouvrirait est sauté (la case de l'étape dit déjà où l'on est)
-    local libre = headers[1]:GetStringWidth() + 24 + pris
+    local libre = headers[1]:GetStringWidth() + 24
     for c = 1, g.cols - 1 do if spacing * c >= libre then header(c + 1, spacing * c, "Étage " .. c) end end
   end
 
@@ -776,9 +751,13 @@ local function refresh()
   for i = usedTags + 1, #orderTags do orderTags[i]:Hide() end
   for i = usedLines + 1, #lines do lines[i]:Hide() end
   for i = usedLabels + 1, #labels do labels[i]:Hide() end
+  -- La barre d'état s'arrête au bouton d'action visible (sa largeur suit son libellé).
+  local action = ComposantsToutFabriquer and ComposantsToutFabriquer:IsShown() and ComposantsToutFabriquer
+    or frame.clore:IsShown() and frame.clore or frame.lancerB
+  frame.status:SetPoint("RIGHT", action, "LEFT", -12, 0)
 
-  frame.status:SetText(ns.texteHV(market)
-    .. " · « + » décompose, « – » achète tout fait (violet = ton choix) · molette : zoom, glisser : déplacer, clic milieu : ajuster")
+  frame.status:SetText(ns.texteHV(market) .. (lectureSeule() and " · lecture seule : « Préparer » dans le fil pour changer"
+    or " · « + » décompose, « – » achète tout fait (violet : ton choix)") .. " · molette : zoom, glisser : déplacer")
 end
 ns.refreshCraftWindow = refresh
 
@@ -807,7 +786,7 @@ end
 local function track(id, qty)
   if not id then return end
   local ok, raison = ns.projetAjouter(projet(), id, qty)
-  if not ok then return print("Composants : " .. raison .. " (Nouveau pour un projet à toi).") end
+  if not ok then return print("Composants : " .. raison .. " (le Brouillon pour un projet à toi).") end
   refresh()
 end
 
@@ -819,9 +798,10 @@ local function searchBox(qty) return AzerothCommune.RechercheObjets(frame, qty, 
 -- l'artisan et l'offre de la commande choisie, la liste des commandes du projet avec leur état (lu dans leur contrat par
 -- Handshake), « Préparer la demande » (ou « Contre-proposer » dans une Réponse, « Voir la demande » une fois partie),
 -- « Importer » une liste reçue, « En clair ». Tout passe par l'API publique de Handshake.
-function ns.barreCommandes(frame, button, input, label, orderName, lancerB)
+-- Sa ligne : de ancreG (à gauche) à ancreD (à droite), sous la ligne d'ajout ; la liste des commandes dessous.
+function ns.barreCommandes(frame, button, input, label, ancreG, ancreD)
   local hs = H()
-  local playerL = label("Joueur", orderName, 16)
+  local playerL = label("Joueur", ancreG, 0)
   local player = input(120, function(v) hs.Artisan(projet(), v, laCommande()); frame.syncOrder() end)
   player:SetPoint("LEFT", playerL, "RIGHT", 10, 0)
   local tipL = label("Offre", player, 14)
@@ -845,7 +825,7 @@ function ns.barreCommandes(frame, button, input, label, orderName, lancerB)
     root:CreateButton("Envoyer la commande en clair", function() hs.EnClair(projet(), laCommande()) end)
     root:CreateButton("Annoncer dans le Commerce", function() hs.Annoncer(projet(), laCommande()) end)
   end)
-  plusB:SetPoint("RIGHT", lancerB, "LEFT", -6, 0)
+  plusB:SetPoint("RIGHT", ancreD, "LEFT", -6, 0)
   local contractB = button("Préparer la demande", 150, function()
     hs.Preparer(projet(), laCommande())
     frame.syncOrder()
@@ -854,7 +834,7 @@ function ns.barreCommandes(frame, button, input, label, orderName, lancerB)
   -- Les commandes du projet, une par bouton : sa part, son artisan et son offre, ou « vide » (son bloc a disparu), puis
   -- son état (lu dans son contrat), l'écart de sa caution à mon estimation (P8, rouge au-delà du seuil) ; clic = la choisir.
   local cmdL = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  cmdL:SetPoint("TOPLEFT", 14, -164)
+  cmdL:SetPoint("TOPLEFT", X0, -108)
   cmdL:SetText("Commandes :")
   local cmdB, actB = {}, {}
   local fixes = { playerL, player, tipL, tip, poL, hint, plusB, contractB, cmdL } -- cachés sur le Brouillon
@@ -916,9 +896,167 @@ function ns.barreCommandes(frame, button, input, label, orderName, lancerB)
   end
 end
 
+-- Supprimer un projet (clic droit dans la colonne, « Clore ») : le projet affiché le reste, sinon le suivant de la liste ;
+-- plus aucun projet : le Brouillon (pas un projet vide créé pour rien). Signalé : Handshake efface ses commandes pas
+-- encore parties, jamais un contrat.
+local function supprimer(p)
+  local affiche = projet()
+  local _, i = ns.projet(p.id)
+  if not i then return end
+  ns.db().courant = i
+  ns.supprimerProjet()
+  if ns.estBrouillon(affiche) or #ns.db().projets == 0 then ns.ouvrirBrouillon()
+  elseif affiche ~= p then ns.ouvrirProjet(affiche.id) end
+  ns.montrerVue()
+end
+
+-- La colonne des projets (skill ui-addon : une colonne toujours visible, pas un menu déroulant) : le Brouillon en tête,
+-- puis chaque projet avec sa phase, celui affiché surligné ; clic = l'ouvrir dans la vue de sa phase ; clic droit =
+-- Renommer (un champ sur l'entrée : Entrée garde, Échap annule), Supprimer ; le Brouillon : Vider. Elle défile au-delà de
+-- sa hauteur. Rend la fonction qui la met à jour.
+local PHASE_NOM = { preparer = "Préparer", reunir = "Réunir", fabriquer = "Fabriquer", fini = "|cff59cc73Fini|r" }
+local ENTREE_H = 34
+local function colonne(parent)
+  local W8 = "Interface\\Buttons\\WHITE8x8"
+  local col = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+  col:SetPoint("TOPLEFT", 8, -8)
+  col:SetPoint("BOTTOMLEFT", 8, 8)
+  col:SetWidth(COL_W)
+  col:SetBackdrop({ bgFile = W8, edgeFile = W8, edgeSize = 1 })
+  col:SetBackdropColor(1, 1, 1, 0.03)
+  col:SetBackdropBorderColor(0.66, 0.56, 1.00, 0.15)
+  local sc = CreateFrame("ScrollFrame", nil, col, "UIPanelScrollFrameTemplate")
+  sc:SetPoint("TOPLEFT", 4, -4)
+  sc:SetPoint("BOTTOMRIGHT", -24, 4)
+  local liste = CreateFrame("Frame", nil, sc)
+  liste:SetSize(COL_W - 28, 1)
+  sc:SetScrollChild(liste)
+  local nomB = CreateFrame("EditBox", nil, liste, "InputBoxTemplate")
+  nomB:SetHeight(20)
+  nomB:SetAutoFocus(false)
+  nomB:SetFrameLevel(liste:GetFrameLevel() + 5)
+  nomB:Hide()
+  local function fermer(self) self.p = nil; self:SetText(""); self:Hide() end
+  nomB:SetScript("OnEnterPressed", function(self)
+    local nom = (self:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if self.p and nom ~= "" then ns.projetRenommer(self.p, nom) end
+    fermer(self)
+    refresh()
+  end)
+  nomB:SetScript("OnEscapePressed", fermer)
+  nomB:SetScript("OnEditFocusLost", fermer)
+  local function menu(b)
+    local p = b.p
+    MenuUtil.CreateContextMenu(b, function(_, root)
+      if ns.estBrouillon(p) then
+        root:CreateButton("Vider le Brouillon", function() ns.viderBrouillon(); ns.montrerVue() end)
+        return
+      end
+      root:CreateButton("Renommer", function()
+        nomB.p = p
+        nomB:ClearAllPoints()
+        nomB:SetPoint("TOPLEFT", b, "TOPLEFT", 8, -1)
+        nomB:SetPoint("RIGHT", b, "RIGHT", -2, 0)
+        nomB:SetText(p.name or "")
+        nomB:Show()
+        nomB:SetFocus()
+        nomB:HighlightText()
+      end)
+      root:CreateButton("Supprimer", function() supprimer(p) end)
+    end)
+  end
+  local entrees = {}
+  local function entree(i)
+    local b = CreateFrame("Button", nil, liste)
+    b:SetSize(COL_W - 28, ENTREE_H - 2)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    b.fond = b:CreateTexture(nil, "BACKGROUND")
+    b.fond:SetAllPoints()
+    b.trait = b:CreateTexture(nil, "ARTWORK") -- celui affiché : un trait lavande à gauche
+    b.trait:SetPoint("TOPLEFT"); b.trait:SetPoint("BOTTOMLEFT"); b.trait:SetWidth(2)
+    b.trait:SetColorTexture(0.66, 0.56, 1.00, 0.9)
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints(); hl:SetColorTexture(1, 1, 1, 0.06)
+    b.nom = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.nom:SetPoint("TOPLEFT", 8, -4); b.nom:SetPoint("RIGHT", -4, 0)
+    b.nom:SetJustifyH("LEFT"); b.nom:SetWordWrap(false)
+    b.phase = b:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    b.phase:SetPoint("TOPLEFT", 8, -18); b.phase:SetPoint("RIGHT", -4, 0)
+    b.phase:SetJustifyH("LEFT")
+    b:SetScript("OnClick", function(self, souris)
+      if souris == "RightButton" then return menu(self) end
+      if ns.estBrouillon(self.p) then ns.ouvrirBrouillon() else ns.ouvrirProjet(self.p.id) end
+      ns.montrerVue()
+    end)
+    b:SetScript("OnEnter", function(self)
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:AddLine(self.nom:GetText())
+      if self.p.tenu then GameTooltip:AddLine(self.p.tenu, 0.66, 0.56, 1, true) end
+      GameTooltip:AddLine("Clic : l'ouvrir", 0.6, 0.6, 0.6)
+      GameTooltip:AddLine(ns.estBrouillon(self.p) and "Clic droit : le vider" or "Clic droit : Renommer, Supprimer", 0.6, 0.6, 0.6)
+      GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    entrees[i] = b
+    return b
+  end
+  return function()
+    local tous, cur = { ns.brouillon() }, projet()
+    for _, p in ipairs(ns.db().projets) do tous[#tous + 1] = p end
+    for i, p in ipairs(tous) do
+      local b = entrees[i] or entree(i)
+      local brouillon = ns.estBrouillon(p)
+      b.p = p
+      b:ClearAllPoints()
+      b:SetPoint("TOPLEFT", 0, -((i - 1) * ENTREE_H + (i > 1 and 8 or 0))) -- le Brouillon un peu à part
+      b.nom:SetFontObject(brouillon and "GameFontNormalSmall" or "GameFontHighlightSmall")
+      b.nom:SetJustifyH("LEFT") -- (SetFontObject le remet au centre)
+      b.nom:SetText(brouillon and "Brouillon" or (p.name or "?"))
+      local n = #p.lines
+      b.phase:SetText(brouillon and (n == 0 and "vide" or (n .. (n > 1 and " lignes" or " ligne"))) or PHASE_NOM[ns.phase(p)])
+      b.fond:SetColorTexture(0.66, 0.56, 1.00, p == cur and 0.16 or 0)
+      b.trait:SetShown(p == cur)
+      b:Show()
+    end
+    for i = #tous + 1, #entrees do entrees[i]:Hide() end
+    liste:SetHeight(#tous * ENTREE_H + 8)
+    if sc.ScrollBar then sc.ScrollBar:SetShown(liste:GetHeight() > sc:GetHeight()) end -- la barre seulement si ça déborde
+  end
+end
+
+-- Les quatre options du calcul (déduire les sacs, la banque, les autres persos ; compter les recettes pas apprises) : dans la
+-- page Composants des réglages fusionnés du socle (AzerothCommune.Regrouper, reglages), plus dans la fenêtre.
+local OPTIONS = { { "bags", "Déduire mes sacs" }, { "bank", "Déduire ma banque" }, { "alts", "Déduire mes autres persos" },
+  { "unlearned", "Compter les recettes pas encore apprises" } }
+local casesOptions = {}
+local function reglages(page, ancre)
+  local titre = page:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  titre:SetPoint("TOPLEFT", ancre, "BOTTOMLEFT", 0, -20)
+  titre:SetText("Calcul de l'arbre")
+  local prev = titre
+  for _, o in ipairs(OPTIONS) do
+    local cb = CreateFrame("CheckButton", nil, page, "UICheckButtonTemplate")
+    cb:SetSize(24, 24)
+    cb:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", prev == titre and -2 or 0, -6)
+    cb.label = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    cb.label:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+    cb.label:SetText(o[2])
+    cb.cle = o[1]
+    cb:SetChecked(opts()[o[1]])
+    cb:SetScript("OnClick", function(self)
+      opts()[o[1]] = self:GetChecked() and true or false
+      refresh()
+      ns.refreshNeeds()
+    end)
+    casesOptions[o[1]] = cb
+    prev = cb
+  end
+end
+
 local function build()
   local hs = H() -- Handshake ne se charge pas en cours de partie : ses widgets sont faits une fois, ou jamais
   frame = ns.newWindow("ComposantsFrame", "Composants", W, H_FEN)
+  frame.title:SetText("") -- la colonne des projets prend le coin
   local function button(text, w, onClick)
     local b = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     b:SetSize(w, 22)
@@ -940,76 +1078,58 @@ local function build()
     t:SetText(text)
     return t
   end
-
-  -- Le projet affiché (Projet.lua) : le menu « Projets » (tous les projets, le Brouillon, Nouveau, Supprimer ; skill
-  -- ui-addon : pas de < > qui font défiler), puis son nom, qu'on renomme sur place. Le Brouillon ne se renomme pas ; son
-  -- menu propose d'en faire un vrai projet, ou de le vider.
   local function surBrouillon() return ns.estBrouillon(projet()) end
-  frame.syncFil = ns.fil(frame, 150, -9) -- le fil, dans la barre de titre
-  local projetsB = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
-  projetsB:SetWidth(110)
-  projetsB:SetPoint("TOPLEFT", 14, -40)
-  projetsB:OverrideText("Projets")
-  projetsB:SetupMenu(function(_, root)
-    local function ouvrir(id) ns.ouvrirProjet(id); ns.montrerVue() end -- la vue de sa phase
-    for _, p in ipairs(ns.db().projets) do
-      root:CreateRadio(p.name or "?", function(id) return projet().id == id end, ouvrir, p.id)
-    end
-    root:CreateRadio("Brouillon", surBrouillon, function() ns.ouvrirBrouillon(); ns.montrerVue() end)
-    root:CreateDivider()
-    if surBrouillon() then -- Lancer en fait un projet
-      root:CreateButton("Vider le Brouillon", function() ns.viderBrouillon(); refresh() end)
-    else
-      root:CreateButton("Nouveau projet", function() ns.nouveauProjet(); refresh() end)
-      root:CreateButton("Supprimer ce projet (Maj+clic)", function()
-        if not IsShiftKeyDown() then return print("Composants : Maj+clic sur « Supprimer ce projet » pour l'effacer.") end
-        ns.supprimerProjet() -- signalé : Handshake efface ses commandes pas encore parties, jamais un contrat
-        ns.montrerVue()
-      end)
-    end
-  end)
-  local orderName = input(220, function(v) ns.projetRenommer(projet(), v) end)
-  orderName:SetPoint("LEFT", projetsB, "RIGHT", 12, 0)
-  -- L'en-tête du projet, sans Handshake ; avec lui, la barre des commandes le complète (frame.syncOrder).
-  frame.syncProjet = function()
-    local b = surBrouillon()
-    if not orderName:HasFocus() then orderName:SetText(b and "Brouillon" or projet().name or "") end
-    orderName:SetEnabled(not b)
-    frame.syncFil()
-    frame.lancerB:SetShown(ns.phase(projet()) == "preparer")
-    frame.lancerB:SetEnabled(#projet().lines > 0)
-  end
+  frame.syncColonne = colonne(frame)
 
-  -- Ligne d'ajout : déposer un objet sur la case, ou taper son nom.
-  local slot = CreateFrame("Button", nil, frame)
-  slot:SetSize(32, 32)
-  slot:SetPoint("TOPLEFT", 14, -70)
-  slot.icon = slot:CreateTexture(nil, "ARTWORK")
-  slot.icon:SetAllPoints()
-  slot.icon:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+  -- L'en-tête : le nom du projet et le fil, rien d'autre. On renomme par la colonne (clic droit).
+  -- ponytail: un EditBox inerte et pas un FontString : les tests de Handshake lisent le nom affiché dans un EditBox ; un
+  -- FontString quand ils auront changé (Composants#26).
+  local orderName = CreateFrame("EditBox", nil, frame)
+  orderName:SetFontObject(GameFontNormalLarge)
+  orderName:SetSize(320, 24)
+  orderName:SetPoint("TOPLEFT", X0, -8)
+  orderName:SetAutoFocus(false)
+  orderName:SetJustifyH("LEFT")
+  orderName:EnableMouse(false)
+  frame.syncFil = ns.fil(frame, X0 + 330, -10)
+
+  -- Ligne d'ajout, en Préparer seulement : la recherche (taper un nom, ou y déposer un objet) et la quantité.
   local qty = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
-  qty:SetSize(44, 22)
+  qty:SetSize(40, 22)
   qty:SetAutoFocus(false)
   qty:SetNumeric(true)
   qty:SetText("1")
-  local name, submit = searchBox(qty)
-  name:SetPoint("LEFT", slot, "RIGHT", 12, 0)
-  qty:SetPoint("LEFT", name, "RIGHT", 10, 0)
-  local add = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-  add:SetSize(80, 22)
-  add:SetPoint("LEFT", qty, "RIGHT", 8, 0)
-  add:SetText("Ajouter")
-  add:SetScript("OnClick", submit)
-  -- Lancer (CONTEXT.md) : le seul bouton d'action de Préparer ; le projet passe à Réunir, la petite vue (ses Besoins) prend
-  -- la place de la grande. Sur le Brouillon, un vrai projet naît (le Brouillon se vide). Grisé sans ligne.
-  local lancerB = button("Lancer", 120, function()
+  local name = searchBox(qty)
+  name:SetPoint("TOPLEFT", X0 + 6, -42)
+  local indice = name:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  indice:SetPoint("LEFT", 2, 0)
+  indice:SetText("ajouter un objet… (ou le déposer ici)")
+  local function indiquer() indice:SetShown((name:GetText() or "") == "" and not name:HasFocus()) end
+  name:HookScript("OnTextChanged", indiquer)
+  name:HookScript("OnEditFocusGained", indiquer)
+  name:HookScript("OnEditFocusLost", indiquer)
+  local fois = frame:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+  fois:SetPoint("LEFT", name, "RIGHT", 10, 0)
+  fois:SetText("×")
+  qty:SetPoint("LEFT", fois, "RIGHT", 8, 0)
+  local ajout = { name, fois, qty }
+
+  -- Le bouton d'action, en bas à droite : un seul visible, selon la phase. Lancer (Préparer) ; la prochaine fabrication
+  -- (Fabriquer : Fabriquer.lua le pose au même endroit, frame.action) ; Clore (Fini).
+  frame.action = CreateFrame("Frame", nil, frame)
+  frame.action:SetSize(1, 24)
+  frame.action:SetPoint("BOTTOMRIGHT", -14, 10)
+  -- Lancer (CONTEXT.md) : le projet passe à Réunir, la petite vue (ses Besoins) prend la place de la grande. Sur le
+  -- Brouillon, un vrai projet naît (le Brouillon se vide). Grisé sans ligne.
+  local lancerB = button("Lancer", 140, function()
     if not ns.lancer(projet()) then return end
     ns.montrerVue()
   end)
-  lancerB:SetPoint("TOPRIGHT", -14, -75)
+  lancerB:SetHeight(24)
+  lancerB:SetPoint("BOTTOMRIGHT", frame.action)
   lancerB:SetMotionScriptsWhileDisabled(true)
   lancerB:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+    GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
     GameTooltip:AddLine("Lancer")
     if #projet().lines == 0 then GameTooltip:AddLine("Rien à lancer : ajoute un objet", 0.9, 0.3, 0.3)
     else
@@ -1020,59 +1140,51 @@ local function build()
   end)
   lancerB:SetScript("OnLeave", function() GameTooltip:Hide() end)
   frame.lancerB = lancerB
-  local function dropped()
-    local kind, id = GetCursorInfo()
-    if kind == "item" then
-      ClearCursor()
-      track(id, math.max(1, tonumber(qty:GetText()) or 1))
-    end
-  end
-  slot:SetScript("OnReceiveDrag", dropped)
-  slot:SetScript("OnClick", dropped)
+  -- Clore (Fini, CONTEXT.md) : tout est fabriqué, le projet sort de la liste, sans archive ni Maj (plus rien à perdre).
+  local clore = button("Clore", 140, function() supprimer(projet()) end)
+  clore:SetHeight(24)
+  clore:SetPoint("BOTTOMRIGHT", frame.action)
+  clore:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+    GameTooltip:AddLine("Clore")
+    GameTooltip:AddLine("Tout est fabriqué : le projet sort de la liste.", 1, 1, 1, true)
+    if HPour(projet()) then GameTooltip:AddLine("Ses commandes pas encore parties sont effacées ; un contrat, jamais.", 0.6, 0.6, 0.6, true) end
+    GameTooltip:Show()
+  end)
+  clore:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  frame.clore = clore
 
-  if hs then ns.barreCommandes(frame, button, input, label, orderName, lancerB) end
-
-  -- Options, sous la ligne d'ajout
-  local labelsOpt = { { "bags", "Déduire mes sacs" }, { "bank", "ma banque" }, { "alts", "mes autres persos" }, { "unlearned", "recettes pas apprises" } }
-  local prev
-  for _, o in ipairs(labelsOpt) do
-    local cb = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-    cb:SetSize(22, 22)
-    if prev then cb:SetPoint("LEFT", prev.label, "RIGHT", 8, 0) else cb:SetPoint("TOPLEFT", 12, -108) end
-    cb.label = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    cb.label:SetPoint("LEFT", cb, "RIGHT", 0, 0)
-    cb.label:SetText(o[2])
-    cb:SetChecked(opts()[o[1]])
-    cb:SetScript("OnClick", function(self) opts()[o[1]] = self:GetChecked() and true or false; refresh() end)
-    prev = cb
-  end
-
-  -- Légende des couleurs (« fourni par toi » : un apport de commande, avec Handshake seulement)
-  local legend = { { COLORS.target, "objet du projet" }, hs and { COLORS.apport, "fourni par toi" } or nil, { COLORS.fabriquer, "à fabriquer" },
-    { COLORS[1], "sacs" }, { COLORS[2], "banque" }, { COLORS[3], "autres persos" }, { COLORS.buy, "à acheter" }, { COLORS.none, "sans prix" } }
-  local lx = 14
-  for i = 1, 8 do
-    local l = legend[i]
-    if l then
-      local sw = frame:CreateTexture(nil, "ARTWORK")
-      sw:SetColorTexture(l[1][1], l[1][2], l[1][3], 0.9)
-      sw:SetSize(10, 10)
-      sw:SetPoint("TOPLEFT", lx, -138)
-      local t = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-      t:SetPoint("LEFT", sw, "RIGHT", 3, 0)
-      t:SetText(l[2])
-      if l[1] == COLORS.apport then frame.apportLegend = t end
-      lx = lx + 18 + t:GetStringWidth() + 10
-    end
+  -- La barre des commandes de Handshake : sa ligne sous la ligne d'ajout, de la gauche (après la colonne) à la droite.
+  if hs then
+    local g = CreateFrame("Frame", nil, frame)
+    g:SetSize(1, 22); g:SetPoint("TOPLEFT", X0 - 1, -76)
+    local d = CreateFrame("Frame", nil, frame)
+    d:SetSize(1, 22); d:SetPoint("TOPRIGHT", -8, -76)
+    ns.barreCommandes(frame, button, input, label, g, d)
   end
 
   -- La zone de dessin : molette = zoom autour du curseur, glisser le fond = déplacer, clic du milieu = vue ajustée.
   scroll = CreateFrame("Frame", nil, frame)
-  scroll:SetPoint("TOPLEFT", 14, hs and -180 or -156) -- avec Handshake, la ligne des commandes au-dessus
-  scroll:SetPoint("BOTTOMRIGHT", -14, 30)
+  scroll:SetPoint("BOTTOMRIGHT", -14, 42)
   scroll:SetClipsChildren(true)
+
+  -- Le projet affiché : son nom, le fil, la colonne ; la ligne d'ajout en Préparer ; le bouton d'action de la phase ; le
+  -- dessin commence sous ce qui est montré.
+  frame.syncProjet = function()
+    local b, ph = surBrouillon(), ns.phase(projet())
+    orderName:SetText(b and "Brouillon" or projet().name or "")
+    orderName:SetCursorPosition(0)
+    frame.syncFil()
+    frame.syncColonne()
+    for _, w in ipairs(ajout) do w:SetShown(ph == "preparer") end
+    indiquer()
+    lancerB:SetShown(ph == "preparer")
+    lancerB:SetEnabled(#projet().lines > 0)
+    clore:SetShown(ph == "fini")
+    scroll:SetPoint("TOPLEFT", X0 - 4, hs and -128 or ph == "preparer" and -74 or -42)
+  end
   content = CreateFrame("Frame", nil, scroll)
-  content:SetSize(W - 28, 1)
+  content:SetSize(W - X0 - 14, 1)
   local function cursor() -- le curseur dans la zone, vers la droite et vers le bas
     local cx, cy = GetCursorPosition()
     local es = scroll:GetEffectiveScale()
@@ -1107,7 +1219,9 @@ local function build()
   end)
 
   frame.status = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  frame.status:SetPoint("BOTTOMLEFT", 14, 10)
+  frame.status:SetPoint("BOTTOMLEFT", X0, 17)
+  frame.status:SetJustifyH("LEFT")
+  frame.status:SetWordWrap(false)
 
   -- Les sacs changent, un nom d'objet arrive du serveur : on recalcule, au plus une fois par seconde.
   local pending
@@ -1129,8 +1243,9 @@ function ns.openCraftWindow(id, qty)
   ns.montrerVue()
 end
 -- Bouton de minicarte et entrée des options communs d'Azeroth Commune : clic ou ligne du menu = cette fenêtre.
+-- Ses réglages : les options du calcul, sur la page Composants des réglages fusionnés.
 AzerothCommune.Regrouper({ nom = "Composants", dossier = "Composants", icone = "Interface\\Icons\\Trade_Engineering",
-  ouvrir = function() ns.openCraftWindow() end, store = function() return ns.db() end })
+  ouvrir = function() ns.openCraftWindow() end, store = function() return ns.db() end, reglages = reglages })
 
 -- Ctrl+clic droit sur un objet n'importe où dans le jeu (sacs, banque, lien du chat, butin, fenêtre de métier, HV) : il
 -- entre dans le Brouillon, jamais dans le projet affiché, et la fenêtre s'ouvre sur le Brouillon. Un objet-recette (« Plans :
@@ -1161,7 +1276,7 @@ if HandleModifiedItemClick then
 end
 
 -- /composants (ou /compo) [<lien, nom ou ID d'objet> [quantité] [tout]] : l'objet entre dans le projet affiché ; « tout »
--- coche « recettes pas apprises ». /composants demo [set|ceinture|hasard] : un projet d'essai.
+-- coche « recettes pas apprises » (réglages). /composants demo [set|ceinture|hasard] : un projet d'essai.
 SLASH_COMPOSANTS1, SLASH_COMPOSANTS2 = "/composants", "/compo"
 SlashCmdList.COMPOSANTS = function(args)
   args = args or ""
@@ -1171,6 +1286,9 @@ SlashCmdList.COMPOSANTS = function(args)
   local qty = tonumber(args:match("%s(%d+)%s*$")) or 1
   local what = args:gsub("%s%d+%s*$", ""):gsub("^%s+", ""):gsub("%s+$", "")
   local id = what ~= "" and ns.findItem(what)
-  if all then opts().unlearned = true end
+  if all then
+    opts().unlearned = true
+    if casesOptions.unlearned then casesOptions.unlearned:SetChecked(true) end
+  end
   ns.openCraftWindow(id, qty)
 end

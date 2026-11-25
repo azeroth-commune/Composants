@@ -1,10 +1,9 @@
--- Composants, « Fabriquer » (#14) : un bouton sous la fenêtre de métier du jeu lance la prochaine fabrication d'un projet
--- tenu (une tranche de Maîtrise, une Réponse de Handshake…). Clic = une fabrication, clic droit = tout ce qu'il reste
--- (autant que les sacs le permettent : le jeu enchaîne lui-même, comme son « Créer tout »). Le compte avance comme dans la
--- fenêtre des projets : l'objet fabriqué arrive dans les sacs et l'arbre le déduit ; une ligne fabrication ne se décompte
--- pas (Maîtrise la recalcule), on passe à la suivante quand ses composants manquent.
--- Placé sous la fenêtre de métier, pas dans la fenêtre des projets : c'est là qu'on fabrique, et la fenêtre de métier du
--- jeu n'a pas de place libre en bas (Créer, Créer tout, le nombre) ni à droite de « Lien » (Mastercraft y met le sien).
+-- Composants, la prochaine fabrication du projet affiché (CONTEXT.md) : en phase Fabriquer, le seul bouton d'action de la
+-- grande vue, en bas, la nomme (« Silex à aiguiser ×7 ») et sa case est cerclée de lavande dans l'arbre. Clic = une
+-- fabrication, clic droit = tout ce que les sacs permettent (le jeu enchaîne lui-même, comme son « Créer tout ») ; sans la
+-- fenêtre du bon métier, « Ouvre Forge » (un bouton sécurisé dont la macro lance le métier). Le compte avance comme dans
+-- l'arbre : l'objet fabriqué arrive dans les sacs et l'arbre le déduit. C'est le seul endroit où l'on fabrique (plus de
+-- bouton sous la fenêtre de métier). Jamais deux recettes sur un clic.
 -- Forever, API moderne : C_TradeSkillUI.CraftRecipe(recette, nombre), l'appel même du bouton « Créer » du jeu
 -- (Blizzard_ProfessionsTemplates/Blizzard_ProfessionsTransaction.lua:354) ; GetCraftableCount (combien les sacs en
 -- permettent), GetRecipeInfo(...).learned, GetRecipeRequirements (outils, forge) ; le métier ouvert :
@@ -82,35 +81,7 @@ local function etatOuvert(f)
   return f
 end
 
--- La prochaine fabrication des projets tenus (le projet affiché d'abord, puis dans l'ordre de la liste) pour le métier
--- ouvert : { p, cle, recette, id, fois (ce qu'il en reste), etat, n, manque }, ou nil s'il n'y a rien à fabriquer dans
--- aucun projet tenu. etat = "pret" (n = ce qu'on peut faire d'un coup, au plus fois), "manque", "inconnue" (ce perso ne
--- l'a pas apprise) ; "ailleurs" : rien pour ce métier, la prochaine est d'un autre (f.recette.profession).
--- La première prête l'emporte ; aucune prête : la première du métier, avec sa raison.
-function ns.prochaineFabrication(metier)
-  local d = ns.db()
-  local moi = UnitGUID("player")
-  local function mien(p) return p and p.tenu and (p.tenuPar == nil or p.tenuPar == moi) end -- pas la tranche d'un autre perso
-  local courant = d.projets[d.courant or 0]
-  local projets = { mien(courant) and courant or nil }
-  for _, p in ipairs(d.projets) do if mien(p) and p ~= courant then projets[#projets + 1] = p end end
-  local premiere, ailleurs
-  for _, p in ipairs(projets) do
-    for _, f in ipairs(aFabriquer(ns.projetArbre(p, nil, ns.apportsHandshake(p)))) do
-      f.p = p
-      if f.recette.profession ~= metier then
-        ailleurs = ailleurs or f
-      else
-        if etatOuvert(f).etat == "pret" then return f end
-        premiere = premiere or f
-      end
-    end
-  end
-  if premiere then return premiere end
-  if ailleurs then ailleurs.etat = "ailleurs" return ailleurs end
-end
-
--- « Tout fabriquer », sous la fenêtre des projets : la prochaine fabrication du projet p (celui affiché), tous métiers, dans
+-- La prochaine fabrication du projet p (celui affiché), tous métiers, dans
 -- l'ordre de aFabriquer ; la première que les composants des sacs permettent. Fenêtre de son métier ouverte (metier) : le
 -- jeu la confirme (etatOuvert) ; sinon etat = "ouvrir" (n = ce que les sacs permettent). Aucune : la première, etat =
 -- "manque". Rien à fabriquer : nil, et fini = true quand les objets du projet sont tous là.
@@ -145,7 +116,7 @@ local function combien(f, n)
   return ("%d × %s"):format(n, f.recette.name or "?")
 end
 
--- Le libellé de « Tout fabriquer » : la prochaine action et son nombre, ou pourquoi rien ; e = la fabrication en cours.
+-- La phrase de la bulle du bouton d'action : la prochaine action et son nombre, ou pourquoi rien ; e = la fabrication en cours.
 function ns.texteToutFabriquer(f, fini, e)
   if e then return ("%s %d/%d…"):format(e.nom, e.fait * e.per, e.n * e.per) end
   if not f then return fini and "Tout est fabriqué" or "Rien à fabriquer" end
@@ -156,37 +127,19 @@ function ns.texteToutFabriquer(f, fini, e)
   return "Il manque de quoi faire " .. combien(f, f.fois)
 end
 
--- Le texte court du bouton sur la case (la case dit déjà quel objet) : « Ouvrir Minage », « Fabriquer 4 », « 2/4… »,
--- « Il manque … » ; la phrase entière va dans sa bulle (texteToutFabriquer).
-function ns.texteCase(f, e)
-  if e then return ("%d/%d…"):format(e.fait * e.per, e.n * e.per) end
-  if f.etat == "pret" then return "Fabriquer " .. (f.id and f.n * math.max(1, f.recette.made_min or 1) or f.n) end
-  if f.etat == "ouvrir" then return "Ouvrir " .. (f.recette.profession or "son métier") end
-  if f.etat == "inconnue" then return "Recette inconnue" end
-  return "Il manque " .. (f.manque or "un composant")
+-- Le libellé du bouton d'action : la prochaine fabrication et ce qu'il en reste à faire (« Silex à aiguiser ×7 », en
+-- objets), « Ouvre Forge », ou pourquoi rien ; e = la fabrication en cours (« Barre de bronze 2/4… »). La phrase entière
+-- va dans sa bulle (texteToutFabriquer).
+function ns.texteBouton(f, e)
+  if e then return ("%s %d/%d…"):format(e.nom, e.fait * e.per, e.n * e.per) end
+  if not f then return "Rien à fabriquer" end
+  if f.etat == "ouvrir" then return "Ouvre " .. (f.recette.profession or "son métier") end
+  if f.etat == "inconnue" then return "Recette inconnue : " .. (f.recette.name or "?") end
+  if f.etat == "manque" then return "Il manque " .. (f.manque or "un composant") end
+  local per = f.id and math.max(1, f.recette.made_min or 1) or 1
+  return ("%s ×%d"):format(f.id and nom(f.id) or f.recette.name or "?", f.fois * per)
 end
 
--- « Ouvre la Forge », « Ouvre l'Alchimie », « Ouvre le Travail du cuir ».
-local MASCULINS = { ["Travail du cuir"] = true, Secourisme = true, Minage = true, ["Dépeçage"] = true }
-local function ouvre(metier)
-  metier = metier or "fenêtre de son métier"
-  local art = MASCULINS[metier] and "le " or ((metier:find("^[AEIOUH]") or metier:find("^É")) and "l'" or "la ")
-  return "Ouvre " .. art .. metier
-end
-
--- Le libellé du bouton : ce qu'il fera, ou pourquoi il ne peut pas.
-function ns.texteFabriquer(f)
-  local quoi = f.id and nom(f.id) or f.recette.name or "?"
-  if f.etat == "pret" then return ("Fabriquer %s ×%d"):format(quoi, f.fois) end
-  if f.etat == "manque" then return "Il manque " .. (f.manque or ("de quoi faire " .. quoi)) end
-  if f.etat == "inconnue" then return "Recette inconnue : " .. (f.recette.name or quoi) end
-  return ouvre(f.recette.profession)
-end
-
----------------------------------------------------------------------------------------------------
--- Le bouton, fait à la première ouverture d'une fenêtre de métier (Blizzard_Professions se charge à la demande), enfant de
--- sa page de fabrication : il disparaît avec elle (autre onglet, fenêtre fermée).
-local bouton, f
 local function metierOuvert()
   local T = C_TradeSkillUI
   if not (T and T.GetBaseProfessionInfo) then return end
@@ -196,57 +149,14 @@ local function metierOuvert()
   return p and p.professionName ~= "" and p.professionName or nil
 end
 
-local function construire()
-  local page = ProfessionsFrame.CraftingPage or ProfessionsFrame
-  bouton = CreateFrame("Button", "ComposantsFabriquer", page, "UIPanelButtonTemplate")
-  bouton:SetHeight(22)
-  bouton:SetPoint("TOPLEFT", ProfessionsFrame, "BOTTOMLEFT", 4, -2)
-  bouton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-  bouton:SetMotionScriptsWhileDisabled(true) -- la bulle dit aussi pourquoi il est grisé
-  bouton:SetScript("OnClick", function(_, souris)
-    if not (f and f.etat == "pret") then return end
-    C_TradeSkillUI.CraftRecipe(f.cle, souris == "RightButton" and f.n or 1)
-  end)
-  bouton:SetScript("OnEnter", function(self)
-    if not f then return end
-    GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
-    GameTooltip:AddLine(f.p.name or "Projet")
-    GameTooltip:AddLine(f.p.tenu, 0.66, 0.56, 1, true)
-    if f.etat == "pret" then
-      GameTooltip:AddLine(("Reste à fabriquer : %d"):format(f.fois), 1, 1, 1)
-      GameTooltip:AddLine("Clic : une fabrication", 0.66, 0.56, 1)
-      GameTooltip:AddLine(("Clic droit : tout (%d, ce que tes sacs permettent)"):format(f.n), 0.66, 0.56, 1)
-    end
-    GameTooltip:Show()
-  end)
-  bouton:SetScript("OnLeave", function() GameTooltip:Hide() end)
-end
-
-local function rafraichir()
-  local metier = ProfessionsFrame and ProfessionsFrame:IsShown() and metierOuvert()
-  f = metier and ns.prochaineFabrication(metier) or nil
-  if not f then
-    if bouton then bouton:Hide() end
-    return
-  end
-  if not bouton then construire() end
-  bouton:SetText(ns.texteFabriquer(f))
-  bouton:SetWidth(bouton:GetTextWidth() + 30)
-  bouton:SetEnabled(f.etat == "pret")
-  bouton:Show()
-end
-ns.rafraichirFabriquer = rafraichir
-
 ---------------------------------------------------------------------------------------------------
--- « Tout fabriquer », sur la case de l'arbre qui est la prochaine fabrication du projet affiché : guider sans réfléchir,
--- quoi fabriquer, combien, dans quelle fenêtre. Un bouton dans la case (à la place de sa ligne de stock), la case cerclée
--- de lavande. Un clic lance toute la fabrication (CraftRecipe(recette, n) : le jeu enchaîne, comme son « Créer tout ») ;
--- pendant ce temps le bouton compte (« 2/4… », grisé) et ne prend pas de second clic, la barre de la case avance cran par
--- cran (Fenetre.lua) ; fini, il passe tout seul à la case suivante. La fenêtre du métier fermée : « Ouvrir <métier> », car l'ouvrir est une action protégée (CastSpell) : c'est
--- un bouton sécurisé dont la macro lance le métier. Jamais deux recettes sur un clic.
--- Un seul bouton, replacé sur la bonne case hors combat : enfant de la case, il suit le zoom et le glisser du dessin sans
--- rien faire. Ses attributs ne s'écrivent que hors combat ; en combat il quitte l'arbre (un enfant protégé rendrait le
--- dessin protégé : ni zoom, ni glisser, ni fenêtre fermée en combat) et y revient à la sortie.
+-- Le bouton d'action en Fabriquer (frame.action de Fenetre.lua, en bas de la grande vue) : guider sans réfléchir, quoi
+-- fabriquer, combien, dans quelle fenêtre ; la case de la prochaine fabrication cerclée de lavande. Pendant une
+-- fabrication, le bouton compte (« Barre de bronze 2/4… », grisé) et ne prend pas de second clic, la barre de la case
+-- avance cran par cran (Fenetre.lua) ; finie, il passe tout seul à la suivante. La fenêtre du métier fermée :
+-- « Ouvre <métier> », car l'ouvrir est une action protégée (CastSpell) : c'est un bouton sécurisé dont la macro lance le
+-- métier. Ses attributs ne s'écrivent que hors combat ; en combat il quitte la fenêtre (un enfant protégé la rendrait
+-- protégée : ni fermée ni déplacée en combat) et y revient à la sortie.
 local tf, tfF, encours
 local function enCombat() return InCombatLockdown and InCombatLockdown() end
 local function enIncantation() return UnitCastingInfo and UnitCastingInfo("player") ~= nil end
@@ -271,7 +181,7 @@ function ns.avancement(e)
   return math.min(1, (e.fait + part) / e.n)
 end
 
--- La fabrication lancée par « Tout fabriquer », nil une fois finie : { id, cle, n fabrications, per objets chacune, fait }.
+-- La fabrication lancée par le bouton d'action, nil une fois finie : { id, cle, n fabrications, per objets chacune, fait }.
 -- La case de son objet en dessine l'avancement (Fenetre.lua, sa barre).
 function ns.fabricationEnCours()
   -- ponytail: fin sans événement (le jeu refuse sans incantation) : 3 s sans fonte ni incantation, la fabrication est finie.
@@ -279,92 +189,91 @@ function ns.fabricationEnCours()
   return encours
 end
 
-local function lancer()
+local function lancer(_, souris)
   local f = tfF
-  if encours or not (f and f.etat == "pret") then return end -- en cours, ou « Ouvrir » (la macro s'en charge)
+  if encours or not (f and f.etat == "pret") then return end -- en cours, ou « Ouvre » (la macro s'en charge)
+  local n = souris == "RightButton" and f.n or 1 -- clic : une ; clic droit : tout ce que les sacs permettent
   encours = { cle = f.cle, id = f.id, nom = f.id and nom(f.id) or f.recette.name or "?",
-    per = f.id and math.max(1, f.recette.made_min or 1) or 1, n = f.n, fait = 0, t = GetTime() }
-  C_TradeSkillUI.CraftRecipe(f.cle, f.n)
+    per = f.id and math.max(1, f.recette.made_min or 1) or 1, n = n, fait = 0, t = GetTime() }
+  C_TradeSkillUI.CraftRecipe(f.cle, n)
   C_Timer.After(3.5, ns.refreshCraftWindow)
   ns.refreshCraftWindow()
 end
 
-local function construireTout() -- hors combat seulement : un bouton sécurisé ne se crée ni ne s'ancre en combat
-  tf = CreateFrame("Button", "ComposantsToutFabriquer", UIParent, "SecureActionButtonTemplate, UIPanelButtonTemplate")
-  tf:SetNormalFontObject(GameFontNormalSmall)
-  tf:SetHighlightFontObject(GameFontHighlightSmall)
-  tf:SetDisabledFontObject(GameFontDisableSmall)
+local function construireTout(parent) -- hors combat seulement : un bouton sécurisé ne se crée ni ne s'ancre en combat
+  tf = CreateFrame("Button", "ComposantsToutFabriquer", parent, "SecureActionButtonTemplate, UIPanelButtonTemplate")
   local t = tf:GetFontString()
-  t:ClearAllPoints(); t:SetPoint("LEFT", 4, 0); t:SetPoint("RIGHT", -4, 0); t:SetWordWrap(false)
-  tf:RegisterForClicks("LeftButtonDown", "LeftButtonUp") -- les deux, selon ActionButtonUseKeyDown ; lancer ne part qu'une fois
+  t:ClearAllPoints(); t:SetPoint("LEFT", 8, 0); t:SetPoint("RIGHT", -8, 0); t:SetWordWrap(false)
+  -- les deux sens, selon ActionButtonUseKeyDown ; lancer ne part qu'une fois (encours)
+  tf:RegisterForClicks("LeftButtonDown", "LeftButtonUp", "RightButtonDown", "RightButtonUp")
   tf:SetAttribute("useOnKeyDown", GetCVarBool and GetCVarBool("ActionButtonUseKeyDown") or false)
   tf:SetMotionScriptsWhileDisabled(true) -- la bulle dit aussi pourquoi il est grisé
   tf:SetScript("PostClick", lancer)
-  -- Le contour de la case : textures du bouton, ancrées à sa case (elles partent avec lui en combat).
-  tf.contour = {}
-  for i = 1, 4 do tf.contour[i] = tf:CreateTexture(nil, "OVERLAY") end
   tf:SetScript("OnEnter", function(self)
     if not tfF then return end
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
     GameTooltip:AddLine("Prochaine fabrication du projet", LAVANDE[1], LAVANDE[2], LAVANDE[3])
     GameTooltip:AddLine(ns.texteToutFabriquer(tfF, nil, encours), 1, 1, 1, true)
-    if tfF.etat == "ouvrir" and not encours then GameTooltip:AddLine("Clic : ouvre la fenêtre du métier, puis clic : fabrique tout", 0.6, 0.6, 0.6, true)
-    elseif tfF.etat == "pret" and not encours then GameTooltip:AddLine("Clic : fabrique tout, le jeu enchaîne", 0.6, 0.6, 0.6, true) end
+    if tfF.etat == "ouvrir" and not encours then GameTooltip:AddLine("Clic : ouvre la fenêtre du métier", 0.6, 0.6, 0.6, true)
+    elseif tfF.etat == "pret" and not encours then
+      GameTooltip:AddLine("Clic : une fabrication", 0.6, 0.6, 0.6)
+      GameTooltip:AddLine(("Clic droit : tout ce que tes sacs permettent (%d)"):format(tfF.n), 0.6, 0.6, 0.6)
+    end
     GameTooltip:Show()
   end)
   tf:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
-local function contour(c, k, a)
-  local b = tf.contour
+-- Le cercle lavande sur la case de la prochaine fabrication (gris si rien n'est possible) : ses textures à elle, dans le
+-- dessin ; une seule case cerclée à la fois.
+local cerclee
+local function cercler(c, k, a)
+  if cerclee and cerclee ~= c then for i = 1, 4 do cerclee.contour[i]:Hide() end end
+  cerclee = c
+  if not c then return end
+  if not c.contour then
+    c.contour = {}
+    for i = 1, 4 do c.contour[i] = c:CreateTexture(nil, "OVERLAY", nil, 7) end
+  end
+  local b = c.contour
   for i = 1, 4 do b[i]:ClearAllPoints(); b[i]:SetColorTexture(k[1], k[2], k[3], a); b[i]:Show() end
-  b[1]:SetPoint("TOPLEFT", c, -1, 1); b[1]:SetPoint("TOPRIGHT", c, 1, 1); b[1]:SetHeight(2)
-  b[2]:SetPoint("BOTTOMLEFT", c, -1, -1); b[2]:SetPoint("BOTTOMRIGHT", c, 1, -1); b[2]:SetHeight(2)
-  b[3]:SetPoint("TOPLEFT", c, -1, 1); b[3]:SetPoint("BOTTOMLEFT", c, -1, -1); b[3]:SetWidth(2)
-  b[4]:SetPoint("TOPRIGHT", c, 1, 1); b[4]:SetPoint("BOTTOMRIGHT", c, 1, -1); b[4]:SetWidth(2)
+  b[1]:SetPoint("TOPLEFT", c, 0, 0); b[1]:SetPoint("TOPRIGHT", c, 0, 0); b[1]:SetHeight(2)
+  b[2]:SetPoint("BOTTOMLEFT", c, 0, 0); b[2]:SetPoint("BOTTOMRIGHT", c, 0, 0); b[2]:SetHeight(2)
+  b[3]:SetPoint("TOPLEFT", c, 0, 0); b[3]:SetPoint("BOTTOMLEFT", c, 0, 0); b[3]:SetWidth(2)
+  b[4]:SetPoint("TOPRIGHT", c, 0, 0); b[4]:SetPoint("BOTTOMRIGHT", c, 0, 0); b[4]:SetWidth(2)
 end
+ns.cerclee = function() return cerclee end -- (lu par les tests)
 
--- Appelé à la fin de chaque dessin de l'arbre (Fenetre.lua) : carteDe(id) = la case affichée de cet objet ; ligne = la
--- ligne du projet, où va le bouton d'une fabrication sans case (un enchantement). Rend la largeur prise sur cette ligne.
--- Seulement en phase Fabriquer (CONTEXT.md, Prochaine fabrication) : en Préparer, on choisit encore ses cases.
-function ns.rafraichirToutFabriquer(carteDe, ligne)
-  if enCombat() then return 0 end -- en combat : refait à la sortie (PLAYER_REGEN_ENABLED)
+-- Appelé à la fin de chaque dessin de l'arbre (Fenetre.lua) : carteDe(id) = la case affichée de cet objet. Seulement en
+-- phase Fabriquer (CONTEXT.md, Prochaine fabrication) : en Préparer on choisit encore ses cases, en Fini c'est « Clore ».
+function ns.rafraichirToutFabriquer(carteDe)
+  if enCombat() then return end -- en combat : refait à la sortie (PLAYER_REGEN_ENABLED)
   ns.fabricationEnCours()
-  local p = ns.projetCourant()
-  local f = ns.phase(p) == "fabriquer" and ns.prochaineDuProjet(p, ProfessionsFrame and ProfessionsFrame:IsShown() and metierOuvert() or nil) or nil
+  local p, fenetre = ns.projetCourant(), ComposantsFrame
+  local enFabriquer = ns.phase(p) == "fabriquer"
+  local f = enFabriquer and ns.prochaineDuProjet(p, ProfessionsFrame and ProfessionsFrame:IsShown() and metierOuvert() or nil) or nil
   tfF = f
   local id = encours and encours.id or f and f.id
   local case = id and carteDe(id)
-  if not (f or encours) or not (case or ligne) then
+  if not (enFabriquer and fenetre and fenetre.action) then
     if tf then tf:Hide() end
-    return 0
+    cercler(nil)
+    return
   end
-  if not tf then construireTout() end
+  if not tf then construireTout(fenetre) end
   local ouvrir = f and f.etat == "ouvrir" and not encours
   local actif = encours or ouvrir or (f and f.etat == "pret")
-  tf:SetText(ns.texteCase(f, encours))
+  tf:SetText(ns.texteBouton(f, encours))
   tf:SetAttribute("type", ouvrir and "macro" or nil)
   tf:SetAttribute("macrotext", ouvrir and ("/cast " .. f.recette.profession) or nil)
   tf:SetEnabled((actif and not encours) and true or false)
-  tf:SetDisabledFontObject(encours and GameFontHighlightSmall or GameFontDisableSmall) -- l'avancement se lit, en blanc
+  tf:SetDisabledFontObject(encours and GameFontHighlight or GameFontDisable) -- l'avancement se lit, en blanc
+  tf:SetParent(fenetre)
   tf:ClearAllPoints()
-  local pris = 0
-  if case then
-    tf:SetParent(case)
-    tf:SetFrameLevel(case:GetFrameLevel() + 3) -- au-dessus du champ de quantité d'une case du projet
-    tf:SetPoint("TOPLEFT", case, "TOPLEFT", case.node.kind == "target" and 80 or 38, -18) -- la ligne de stock (subText)
-    tf:SetPoint("TOPRIGHT", case, "TOPRIGHT", -4, -18)
-    contour(case, actif and LAVANDE or { 0.6, 0.6, 0.62 }, actif and 0.95 or 0.5)
-  else
-    tf:SetParent(ligne:GetParent())
-    tf:SetPoint("LEFT", ligne, "RIGHT", 10, 0)
-    tf:SetWidth(tf:GetTextWidth() + 16)
-    for i = 1, 4 do tf.contour[i]:Hide() end
-    pris = tf:GetWidth() + 10
-  end
-  tf:SetHeight(15)
+  tf:SetPoint("BOTTOMRIGHT", fenetre.action)
+  tf:SetSize(math.min(340, math.max(140, tf:GetTextWidth() + 30)), 24)
   tf:Show()
-  return pris
+  if case then cercler(case, actif and LAVANDE or { 0.6, 0.6, 0.62 }, actif and 0.95 or 0.5) else cercler(nil) end
 end
 
 -- Fenêtre de métier ouverte ou mise à jour, sacs changés (une fabrication finie), projet changé : au plus une fois par
@@ -373,7 +282,7 @@ local prevu
 local function bientot()
   if prevu then return end
   prevu = true
-  C_Timer.After(0.2, function() prevu = false; rafraichir(); ns.refreshCraftWindow() end)
+  C_Timer.After(0.2, function() prevu = false; ns.refreshCraftWindow() end)
 end
 local ev = CreateFrame("Frame")
 for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_CLOSE", "BAG_UPDATE_DELAYED",
@@ -386,7 +295,7 @@ ev:SetScript("OnEvent", function(_, e, _, _, sort)
     if tf then tf:Hide(); tf:ClearAllPoints(); tf:SetParent(UIParent) end
     return
   end
-  if encours and sort == encours.cle then -- l'avancement de « Tout fabriquer »
+  if encours and sort == encours.cle then -- l'avancement de la fabrication lancée
     if e == "UNIT_SPELLCAST_SUCCEEDED" then
       encours.fait, encours.t = encours.fait + 1, GetTime()
       C_Timer.After(3.5, bientot)

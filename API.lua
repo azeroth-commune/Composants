@@ -33,7 +33,7 @@ Composants = {
   -- Dessous, les choix de case restent libres.
   Tenir = function(p, raison, lignes) ns.projetTenir(p, raison, lignes) end,
   -- L'arbre et les blocs : p = un projet, ou toute table { lines, choix }. sansStock = true : toutes les recettes, aucun
-  -- stock déduit (ce que verrait un artisan) ; sinon les options de la fenêtre. apports = { [id] = true } facultatif : ces
+  -- stock déduit (ce que verrait un artisan) ; sinon les options du calcul (réglages). apports = { [id] = true } facultatif : ces
   -- cases sortent de l'arbre. Renvoie { roots, cases, caseDe, liens, blocs, blocDe, livraisons, total, incomplete, market }.
   Arbre = function(p, sansStock, apports) return ns.projetArbre(p, sansStock and { unlearned = true } or nil, apports) end,
   -- « Ce projet a changé » : fn(p, quoi), quoi = "nouveau", "lignes", "choix", "nom", "tenu", "phase" ou "supprime".
