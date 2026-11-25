@@ -1,0 +1,9 @@
+package-as: Composants
+ignore:
+  - tests
+  - check.lua
+  - docs
+  - CLAUDE.md
+  - CONTEXT.md
+# ponytail: required-dependencies azeroth-commune à remettre quand le socle est validé (erreur 1018)
+
