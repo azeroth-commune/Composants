@@ -8,9 +8,9 @@
 -- chaque ouverture de l'HV, la liste d'achats d'Auctionator « Besoins (Composants) » (#18), celle du projet affiché.
 local _, ns = ...
 
--- L'arbre des Besoins de p : options de la fenêtre (ou opts), ses apports Handshake ; les sacs, la banque et les autres
--- persos y comptent toujours, options décochées ou non (réunir, c'est les avoir dans les sacs ; la banque et les autres
--- persos disent où les trouver, plutôt que « à acheter »).
+-- L'arbre des Besoins de p : options du calcul (réglages, ou opts), ses apports Handshake ; les sacs, la banque et les
+-- autres persos y comptent toujours, options décochées ou non (réunir, c'est les avoir dans les sacs ; la banque et les
+-- autres persos disent où les trouver, plutôt que « à acheter »).
 function ns.besoinsArbre(p, opts)
   local o = {}
   for k, v in pairs(opts or ns.db().options) do o[k] = v end

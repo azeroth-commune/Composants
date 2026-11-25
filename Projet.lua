@@ -40,7 +40,7 @@ function ns.nouveauProjet(p)
 end
 
 -- Le Brouillon (CONTEXT.md) : un projet de passage, unique et toujours là, hors de la liste des projets (identité 0, jamais
--- donnée à un projet). Tout Ctrl+clic droit y atterrit ; on n'y commande rien. Affiché par le menu « Projets » ; l'afficher ne
+-- donnée à un projet). Tout Ctrl+clic droit y atterrit ; on n'y commande rien. Affiché par la colonne des projets ; l'afficher ne
 -- change pas le rang du projet qu'on quitte.
 function ns.brouillon()
   local d = db()
@@ -140,9 +140,6 @@ end
 -- il est rendu. De nouvelles lignes (une tranche recalculée) le remettent en Préparer ; le rendre ne change pas sa phase.
 function ns.projetTenir(p, raison, lignes)
   p.tenu = raison
-  -- le perso depuis lequel il est tenu (Maîtrise : sa tranche ; Handshake : sa Réponse) : « Fabriquer » ne propose que ceux
-  -- du perso connecté ; nil pour un projet tenu avant cette note (proposé à tous jusqu'au prochain « Mettre à jour »)
-  p.tenuPar = raison and UnitGUID("player") or nil
   if lignes then p.lines = lignes; enPreparer(p) end
   signaler(p, "tenu")
 end

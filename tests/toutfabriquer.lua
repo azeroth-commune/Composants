@@ -1,4 +1,4 @@
--- « Tout fabriquer » dans wow-ui-sim : la prochaine fabrication sur sa case de l'arbre (Fabriquer.lua).
+-- La prochaine fabrication dans wow-ui-sim : le bouton d'action en bas de la grande vue, sa case cerclée (Fabriquer.lua).
 -- ponytail: ce fichier passe après projet.lua exprès : au-delà de 5 s d'horloge simulée, le relevé du socle (scanAll) tourne
 -- avec les données du simulateur et le test des Besoins de projet.lua ne trouve plus sa case ; le rendre robuste si un autre
 -- test doit faire avancer l'horloge avant lui.
@@ -7,9 +7,9 @@ local function ecouler(s) -- horloge manuelle du simulateur : les minuteries pro
     A_Admin.AdvanceTime(s)
 end
 
--- « Tout fabriquer » : l'action sur la case de la prochaine fabrication. 4 barres d'étain à fondre (Fonte de l'étain,
+-- Le bouton d'action en Fabriquer : la prochaine fabrication, sa case cerclée. 4 barres d'étain à fondre (Fonte de l'étain,
 -- réserve du socle), 4 minerais en sac ; les sacs, le métier ouvert et les réponses de C_TradeSkillUI sont ceux du test.
-test("Tout fabriquer : la prochaine fabrication sur sa case, sa fenêtre, l'avancement, hors combat", function()
+test("le bouton d'action : la prochaine fabrication, une ou tout, sa fenêtre, l'avancement, hors combat", function()
     if not ProfessionsFrame then C_AddOns.LoadAddOn("Blizzard_Professions") end
     local T, garde, lance = C_TradeSkillUI, {}, {}
     local metier, combat, sacs = nil, false, { [2771] = 4 }
@@ -42,15 +42,21 @@ test("Tout fabriquer : la prochaine fabrication sur sa case, sa fenêtre, l'avan
     local p = Composants.NouveauProjet({ name = "Barres d'étain", lines = { { id = 3576, qty = 4 } } })
     local function fonte(n) for _ = 1, n do FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "fonte", 3304) end end
     -- La case d'un objet dans l'arbre, et une ligne de texte du dessin (la ligne du projet).
-    local function caseDe(id, b)
-        for _, c in ipairs({ b:GetParent():GetParent():GetChildren() }) do
-            if c.node and c.node.id == id and c:IsShown() then return c end
+    local function caseDe(id)
+        local function chercher(f)
+            for _, c in ipairs({ f:GetChildren() }) do
+                if c.node and c.node.id == id and c:IsShown() then return c end
+                local r = chercher(c)
+                if r then return r end
+            end
         end
+        return chercher(ComposantsFrame)
     end
-    local function dans(b, c) -- le bouton tient dans la case, à toute échelle
-        return b:GetLeft() >= c:GetLeft() - 0.5 and b:GetRight() <= c:GetRight() + 0.5
-            and b:GetTop() <= c:GetTop() + 0.5 and b:GetBottom() >= c:GetBottom() - 0.5
+    local function enBas(b) -- en bas à droite de la grande vue, sous l'arbre
+        return b:GetParent() == ComposantsFrame and b:GetBottom() - ComposantsFrame:GetBottom() < 20
+            and ComposantsFrame:GetRight() - b:GetRight() < 20
     end
+    local function cerclee(c) return c.contour ~= nil and c.contour[1]:IsShown() end
     local function ligne(content, motif)
         for _, r in ipairs({ content:GetRegions() }) do
             if r.GetText and r:IsShown() and (r:GetText() or ""):find(motif) then return r end
@@ -70,40 +76,48 @@ test("Tout fabriquer : la prochaine fabrication sur sa case, sa fenêtre, l'avan
         ecouler(1)
         local b = ComposantsToutFabriquer
         assertNotNil(b, "le bouton de la prochaine fabrication")
-        local barre = caseDe(3576, b)
+        local barre = caseDe(3576)
         assertNotNil(barre, "la case Barre d'étain")
-        assertEquals(barre, b:GetParent(), "sur la case de la prochaine fabrication")
-        assertTrue(b:IsVisible() and dans(b, barre), "visible, dans la case")
-        assertTrue(b.contour[1]:IsShown(), "la case se distingue : contour")
+        assertTrue(b:IsVisible() and enBas(b), "visible, en bas de la grande vue")
+        assertTrue(cerclee(barre), "la case de la prochaine fabrication se distingue : cerclée")
         local content, scroll = barre:GetParent(), barre:GetParent():GetParent()
-        assertTrue(ComposantsFrame.status:GetBottom() - ComposantsFrame:GetBottom() < 20, "plus de bouton en bas : la barre d'état à sa place")
-        -- Aucune fenêtre de métier : la macro ouvre le Minage.
-        assertEquals("Ouvrir Minage", b:GetText())
-        assertTrue(b:IsEnabled(), "Ouvrir : cliquable")
+        assertTrue(ComposantsFrame.status:GetBottom() - ComposantsFrame:GetBottom() < 20, "la barre d'état en bas")
+        assertTrue(ComposantsFrame.status:GetRight() <= b:GetLeft(), "la barre d'état ne passe pas sous le bouton")
+        -- Aucune fenêtre de métier : le bouton le dit, sa macro ouvre le Minage.
+        assertEquals("Ouvre Minage", b:GetText())
+        assertTrue(b:IsEnabled(), "Ouvre : cliquable")
         assertEquals("macro", b:GetAttribute("type"))
         assertEquals("/cast Minage", b:GetAttribute("macrotext"))
-        -- Molette et glisser : le bouton suit la case (enfant de la case, dans le dessin qui défile).
+        -- Molette : le dessin zoome, le bouton reste en bas, la case reste cerclée.
         scroll:GetScript("OnMouseWheel")(scroll, 1)
         scroll:GetScript("OnMouseWheel")(scroll, 1)
-        assertTrue(dans(b, barre), "zoomé : toujours dans la case")
-        -- Le Minage ouvert : le même bouton fabrique les 4, d'un clic.
+        assertTrue(enBas(b) and cerclee(barre), "zoomé : le bouton en bas, la case cerclée")
+        -- Le Minage ouvert : clic = une fabrication.
         metier = "Minage"
         ProfessionsFrame:Show()
         FireEvent("TRADE_SKILL_SHOW")
         ecouler(1)
-        assertEquals("Fabriquer 4", b:GetText())
+        assertTrue(b:GetText():find(" ×4$") ~= nil, "la barre d'étain, 4 à faire : " .. b:GetText())
         assertNil(b:GetAttribute("type"), "plus de macro")
         b:Click("LeftButton")
         assertEquals(1, #lance)
-        assertEquals(3304, lance[1][1]); assertEquals(4, lance[1][2])
-        -- En cours : l'avancement sur la case, sa barre, et pas de second clic.
-        assertEquals("0/4…", b:GetText())
+        assertEquals(3304, lance[1][1]); assertEquals(1, lance[1][2], "clic : une")
+        assertTrue(b:GetText():find(" 0/1…$") ~= nil, b:GetText())
+        fonte(1)
+        ecouler(1)
+        assertTrue(b:GetText():find(" ×4$") ~= nil, "finie (le test ne change pas les sacs) : de nouveau prête, " .. b:GetText())
+        -- Clic droit : tout ce que les sacs permettent.
+        b:Click("RightButton")
+        assertEquals(2, #lance)
+        assertEquals(3304, lance[2][1]); assertEquals(4, lance[2][2], "clic droit : les 4")
+        -- En cours : l'avancement sur le bouton et sur la case, et pas de second clic.
+        assertTrue(b:GetText():find(" 0/4…$") ~= nil, b:GetText())
         assertTrue(not b:IsEnabled(), "en cours : grisé")
         b:Click("LeftButton")
-        assertEquals(1, #lance, "pas de second lancement")
+        assertEquals(2, #lance, "pas de second lancement")
         fonte(2)
         ecouler(1)
-        assertEquals("2/4…", b:GetText())
+        assertTrue(b:GetText():find(" 2/4…$") ~= nil, b:GetText())
         -- La barre de la case, pas une barre à lui : la part « à fabriquer » en 4 crans, 2 pleins (couleur du stock).
         assertNil(b.fill, "le bouton : son texte et son action, sans barre")
         local function rempli() return barre.cran:IsShown() and barre.cran:GetWidth() / barre.cranW or 0 end
@@ -134,9 +148,10 @@ test("Tout fabriquer : la prochaine fabrication sur sa case, sa fenêtre, l'avan
         fonte(2)
         FireEvent("BAG_UPDATE_DELAYED")
         ecouler(1)
-        assertTrue(not b:IsShown(), "fini : plus d'action")
+        assertTrue(not b:IsShown(), "fini : plus de prochaine fabrication")
         assertNotNil(ligne(content, "Tout est fabriqué"), "« Tout est fabriqué » sur la ligne du projet")
         assertEquals("fini", p.phase, "phase Fini")
+        assertTrue(ComposantsFrame.clore:IsVisible() and not ComposantsFrame.lancerB:IsVisible(), "Fini : « Clore », seul")
         -- Fini est gardé (des barres vendues ne rouvrent rien) ; le fil ramène en Fabriquer, le bouton revient.
         sacs = { [2771] = 4 }
         FireEvent("BAG_UPDATE_DELAYED")
@@ -145,31 +160,32 @@ test("Tout fabriquer : la prochaine fabrication sur sa case, sa fenêtre, l'avan
         assertTrue(not b:IsShown(), "Fini : pas d'action")
         filFabriquer():Click()
         ecouler(1)
-        assertTrue(b:IsShown() and b:GetParent() == caseDe(3576, b), "de retour sur la case")
-        b:Click("LeftButton")
-        assertEquals("0/4…", b:GetText())
+        assertTrue(b:IsShown() and enBas(b) and cerclee(caseDe(3576)), "de retour en bas, la case cerclée")
+        assertTrue(not ComposantsFrame.clore:IsVisible(), "Fabriquer : pas de « Clore »")
+        b:Click("RightButton")
+        assertTrue(b:GetText():find(" 0/4…$") ~= nil, b:GetText())
         FireEvent("UNIT_SPELLCAST_INTERRUPTED", "player", "fonte", 3304)
         ecouler(1)
-        assertEquals("Fabriquer 4", b:GetText())
+        assertTrue(b:GetText():find(" ×4$") ~= nil, "interrompue : de nouveau prête, " .. b:GetText())
         -- Combat : le bouton quitte l'arbre juste avant le verrou ; rien d'écrit pendant, molette libre ; tout revient à la sortie.
         FireEvent("PLAYER_REGEN_DISABLED")
         combat = true
-        assertTrue(not b:IsShown() and b:GetParent() == UIParent, "en combat : hors de l'arbre")
+        assertTrue(not b:IsShown() and b:GetParent() == UIParent, "en combat : hors de la fenêtre")
         metier = nil
         ProfessionsFrame:Hide()
         FireEvent("TRADE_SKILL_CLOSE")
         ecouler(1)
         scroll:GetScript("OnMouseWheel")(scroll, -1)
-        assertTrue(not b:IsShown(), "en combat : toujours hors de l'arbre")
+        assertTrue(not b:IsShown(), "en combat : toujours hors de la fenêtre")
         assertNil(b:GetAttribute("type"), "en combat : aucun attribut écrit")
         combat = false
         FireEvent("PLAYER_REGEN_ENABLED")
         ecouler(1)
-        barre = caseDe(3576, b)
-        assertTrue(b:IsVisible() and b:GetParent() == barre and dans(b, barre), "de retour sur la case")
-        assertEquals("Ouvrir Minage", b:GetText())
+        barre = caseDe(3576)
+        assertTrue(b:IsVisible() and enBas(b), "de retour en bas de la fenêtre")
+        assertEquals("Ouvre Minage", b:GetText())
         assertEquals("/cast Minage", b:GetAttribute("macrotext"))
-        -- Sans composants : la case dit ce qui manque, grisée.
+        -- Sans composants : le bouton dit ce qui manque, grisé.
         sacs = {}
         FireEvent("BAG_UPDATE_DELAYED")
         ecouler(1)
@@ -178,14 +194,14 @@ test("Tout fabriquer : la prochaine fabrication sur sa case, sa fenêtre, l'avan
         assertNil(b:GetAttribute("type"))
         assertTrue(not (ComposantsFrame.clore and ComposantsFrame.clore:IsShown()), "pas fini : rien à clore")
         assertNil(barre:GetScript("OnUpdate"), "hors fabrication : pas d'OnUpdate")
-        -- Tout fabriqué : « Clore le projet » sur la ligne du projet, sans Maj ; le projet sort de la liste.
+        -- Tout fabriqué : « Clore », le bouton d'action en bas, sans Maj ; le projet sort de la liste.
         sacs = { [3576] = 4 }
         FireEvent("BAG_UPDATE_DELAYED")
         ecouler(1)
         local clore = ComposantsFrame.clore
-        assertTrue(clore and clore:IsVisible(), "fini : « Clore le projet »")
-        assertEquals("Clore le projet", clore:GetText())
-        assertTrue(clore:GetLeft() > ligne(content, "Tout est fabriqué"):GetRight(), "au bout de la ligne du projet")
+        assertTrue(clore and clore:IsVisible(), "fini : « Clore »")
+        assertEquals("Clore", clore:GetText())
+        assertTrue(enBas(clore), "à la place du bouton d'action")
         clore:Click("LeftButton")
         assertNil(Composants.Projet(p.id), "clos : le projet n'est plus là")
     end)
