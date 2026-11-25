@@ -489,8 +489,60 @@ do
   assert(garde.I2841 and not garde.I2770 and not garde.I2771 and garde.T1 and garde.T2, "le minage : le bronze seul, la forge entière")
   assert(gr.cols == 2, "plus d'étage pour le minerai")
 end
-commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
 print("Composants : dessin de l'arbre (étages, relais, bandes) OK")
+
+-- L'emplacement des Besoins (Composants#27) : un bloc confié sort des Besoins (ses cases et ce qui n'est fabriqué que pour
+-- lui), et du coût à acheter ; ce que le joueur lui donne (aDonner) y reste, une ligne comme les autres. Réunir →
+-- Fabriquer et Fabriquer → Fini attendent clos. Marteau + cuirasse : forge (perle, bronze du minage), minage (cuivre, étain).
+do
+  local p = ns.nouveauProjet({ name = "Confié", lines = { { id = 5541, qty = 1 }, { id = 2870, qty = 1 } } })
+  ns.projetChoix(p, 2841, "fabriquer")
+  local function lignes()
+    local t, cout = {}, 0
+    for _, r in ipairs((ns.orderNeeds(ns.besoinsArbre(p, TOUT)))) do t[r.id], cout = r, cout + r.cost end
+    return t, cout
+  end
+  local l, cout = lignes()
+  assert(l[2770] and l[2771] and l[5500] and not l[2841], "sans fournisseur : cuivre, étain, perle")
+  local confier, donne, clos = {}, nil, false
+  local avant = Composants.Emplacements({ confie = function(_, b) return confier[b and b.key or true] end,
+    aDonner = function() return donne end, clos = function() return clos end })
+  confier.Minage = true
+  local l2, cout2 = lignes()
+  assert(not l2[2770] and not l2[2771] and l2[5500], "le minage confié : cuivre et étain sortent, la perle reste")
+  assert(cout2 < cout, "ni dans le coût à acheter")
+  confier = { Forge = true }
+  l = lignes()
+  assert(l[2770] and l[2771] and not l[5500], "la forge confiée : sa perle sort ; le bronze, du minage, se fait toujours")
+  donne = { [5500] = true }
+  l = lignes()
+  assert(l[5500] and l[5500].required == 3, "la perle donnée à la forge : une ligne des Besoins (il faut l'avoir sur soi)")
+  confier, donne = { [true] = true }, nil
+  assert(next((lignes())) == nil, "le projet entier confié : rien à réunir")
+  -- Tout réuni (rien à réunir) mais pas clos : on reste en Réunir ; clos : Fabriquer. Fini attend clos aussi.
+  assert(ns.lancer(p) == p and ns.phase(p) == "reunir", "Lancer, même si ce qui est confié n'est pas arrivé")
+  assert(not ns.avancerPhase(p) and ns.phase(p) == "reunir", "pas clos : Réunir")
+  clos = true
+  assert(ns.avancerPhase(p) and ns.phase(p) == "fabriquer", "clos : Fabriquer")
+  local projetFini = ns.projetFini
+  ns.projetFini = function() return true end
+  clos = false
+  assert(not ns.avancerPhase(p) and ns.phase(p) == "fabriquer", "plus rien à fabriquer, pas clos : pas Fini")
+  clos = true
+  assert(ns.avancerPhase(p) and ns.phase(p) == "fini", "clos : Fini")
+  ns.projetFini = projetFini
+  -- Une erreur chez le fournisseur : signalée, pas clos.
+  local erreurs, handler = {}, geterrorhandler
+  geterrorhandler = function() return function(e) erreurs[#erreurs + 1] = e end end
+  Composants.Emplacements({ clos = function() error("boum") end })
+  assert(not ns.closEmplacement(p) and #erreurs == 1, "erreur : pas clos, signalée")
+  geterrorhandler = handler
+  Composants.Emplacements(avant)
+  assert(ns.closEmplacement(p), "sans fournisseur : clos")
+  Composants.Supprimer(p.id)
+end
+print("Composants : l'emplacement des Besoins (part confiée, aDonner, clos) OK")
+commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
 
 -- Suggestions : la barre de recherche du socle (AzerothCommune#60), plus de copie ni d'index d'objets à Composants.
 local fen = io.open("Composants/Fenetre.lua"):read("*a")

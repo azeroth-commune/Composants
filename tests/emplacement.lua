@@ -15,7 +15,7 @@ local function blocsDessines() return tous(ComposantsFrame, function(c) return c
 
 -- f(appels) avec le faux fournisseur : appels[i] = { p, bloc, confie, zone } à chaque dessin ; confier = { [métier] = true }
 -- (true = le projet entier) ; apports = { [itemID] = true }. Recettes pas apprises comptées (personne n'en a ici).
-local function avecFaux(confier, apports, f)
+local function avecFaux(confier, apports, f, champs)
     local appels = {}
     local faux = {
         confie = function(p, bloc) return confier[bloc and bloc.key or true] == true end,
@@ -28,6 +28,7 @@ local function avecFaux(confier, apports, f)
         end,
         apports = function() return apports end,
     }
+    for k, v in pairs(champs or {}) do faux[k] = v end
     local avant = Composants.Emplacements(faux)
     local unlearned = ComposantsDB.options.unlearned
     ComposantsDB.options.unlearned = true
@@ -35,6 +36,7 @@ local function avecFaux(confier, apports, f)
     ComposantsDB.options.unlearned = unlearned
     assertEquals(faux, Composants.Emplacements(avant), "le faux rendu, l'ancien remis")
     ComposantsFrame:Hide()
+    if ComposantsBesoinsFrame then ComposantsBesoinsFrame:Hide() end
     if not ok then error(err, 0) end
 end
 local function dernier(appels, cle)
@@ -145,4 +147,75 @@ test("une erreur du fournisseur ne casse pas la fenêtre : elle est signalée, l
     Composants.Emplacements(avant)
     ComposantsFrame:Hide()
     if not ok then error(err, 0) end
+end)
+
+-- L'emplacement des Besoins (Composants#27) : le même fournisseur y dessine ses lignes (besoins), dit si ce qu'il a pris en
+-- charge est arrivé (clos), et ce que le joueur donne à un bloc confié (aDonner). Un bloc confié sort des Besoins, sauf ce
+-- qu'on lui donne.
+local function lignesBesoins()
+    local out = {}
+    for _, c in ipairs(tous(ComposantsBesoinsFrame, function(c) return c.itemID ~= nil and c:IsShown() end)) do out[c.itemID] = c end
+    return out
+end
+local function bouton(texte)
+    return tous(ComposantsFrame, function(c) return c:GetObjectType() == "Button" and c:IsVisible() and c:GetText() == texte end)[1]
+end
+
+test("Besoins : les lignes du fournisseur ; tout réuni mais pas clos, on reste en Réunir ; clos, Fabriquer", function()
+    local arrive = false
+    avecFaux({ [true] = true }, nil, function()
+        SlashCmdList.COMPOSANTS("demo ceinture")
+        local p = projet()
+        bouton("Lancer"):Click()
+        assertEquals("reunir", p.phase, "Lancer, même avec un projet confié pas encore arrivé")
+        assertTrue(ComposantsBesoinsFrame:IsShown(), "la petite vue")
+        assertNil(next(lignesBesoins()), "tout confié : aucune ligne d'objet")
+        local z = tous(ComposantsBesoinsFrame, function(c) return c.faux ~= nil and c:IsVisible() end)[1]
+        assertNotNil(z, "la zone du fournisseur, montrée")
+        assertEquals("Ligne factice · " .. p.name, z.faux:GetText())
+        assertEquals(20, math.floor(z:GetHeight() + 0.5), "la hauteur qu'il a rendue")
+        Composants.Rafraichir()
+        assertEquals("reunir", p.phase, "rien à réunir, mais pas clos : Réunir")
+        arrive = true
+        Composants.Rafraichir()
+        assertEquals("fabriquer", p.phase, "clos : Fabriquer tout seul")
+        Composants.Supprimer(p.id)
+    end, {
+        besoins = function(zone, p)
+            zone.faux = zone.faux or zone:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            zone.faux:SetPoint("TOPLEFT")
+            zone.faux:SetText("Ligne factice · " .. p.name)
+            return 20
+        end,
+        clos = function() return arrive end,
+    })
+end)
+
+test("Besoins : un bloc confié en sort, ce qu'on lui donne y reste", function()
+    SlashCmdList.COMPOSANTS("demo ceinture")
+    local p = projet()
+    ComposantsDB.options.unlearned = true
+    local blocs = Composants.Arbre(p).blocs
+    ComposantsDB.options.unlearned = false
+    ComposantsFrame:Hide()
+    local cle = blocs[#blocs].key -- la première étape : ce qu'il livre entre dans un autre bloc
+    local tout, confie
+    avecFaux({}, nil, function()
+        Composants.Ouvrir(p.id)
+        bouton("Lancer"):Click()
+        tout = lignesBesoins()
+    end)
+    avecFaux({ [cle] = true }, nil, function()
+        Composants.Ouvrir(p.id)
+        confie = lignesBesoins()
+    end)
+    local parti
+    for id in pairs(tout) do if not confie[id] then parti = id end end
+    for id in pairs(confie) do assertNotNil(tout[id], "rien de nouveau : " .. id) end
+    assertNotNil(parti, ("le bloc %s confié : ses composants sortent des Besoins"):format(cle))
+    avecFaux({ [cle] = true }, nil, function()
+        Composants.Ouvrir(p.id)
+        assertNotNil(lignesBesoins()[parti], "donné au bloc : une ligne des Besoins")
+    end, { aDonner = function() return { [parti] = true } end })
+    Composants.Supprimer(p.id)
 end)
