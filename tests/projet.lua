@@ -13,7 +13,7 @@ local function boutons(ok)
     return tous(ComposantsFrame, function(c) return c:GetObjectType() == "Button" and c:IsVisible() and ok(c:GetText() or "") end)
 end
 local function bouton(texte) return boutons(function(t) return t == texte end)[1] end
--- Les menus déroulants de la fenêtre (« Plus », de Handshake).
+-- Les menus déroulants de la fenêtre (il n'y en a plus : la colonne des projets).
 local function deroulant(nom)
     return tous(ComposantsFrame, function(c) return c.OverrideText ~= nil and c:IsVisible() and c:GetText() == nom end)[1]
 end
@@ -57,7 +57,10 @@ local function choisir(nom, entree)
 end
 -- Le nom du projet affiché en haut de la fenêtre.
 local function affiche(nom)
-    return #tous(ComposantsFrame, function(c) return c:GetObjectType() == "EditBox" and c:GetText() == nom end) > 0
+    for _, r in ipairs({ ComposantsFrame:GetRegions() }) do
+        if r.GetText and r:IsShown() and r:GetText() == nom then return true end
+    end
+    return false
 end
 -- Les cases dessinées : une par objet (c.node).
 local function cases() return tous(ComposantsFrame, function(c) return c.node ~= nil and c:IsShown() end) end
@@ -79,7 +82,6 @@ local function sansRecettes(f)
     ComposantsDB.options.unlearned = avant
     ComposantsFrame:Hide()
     if ComposantsBesoinsFrame then ComposantsBesoinsFrame:Hide() end
-    if HandshakeContratsFrame then HandshakeContratsFrame:Hide() end
     if not ok then error(err, 0) end
 end
 
@@ -559,82 +561,6 @@ test("la barre de recherche propose les objets de la recherche du socle", functi
     assertEquals(#attendus, #montres)
     box:SetText("")
 end) end)
-
-if not Handshake then
-    test("Composants seul : aucun bouton de commande", function() sansRecettes(function()
-        SlashCmdList.COMPOSANTS("demo ceinture")
-        for _, t in ipairs({ "Commander", "Préparer la demande" }) do
-            assertNil(bouton(t), t .. " affiché sans Handshake")
-        end
-        assertNil(deroulant("Plus"), "le menu « Plus » (Importer, En clair) sans Handshake")
-        assertEquals(0, #boutons(function(t) return t:find("tout le projet", 1, true) ~= nil end), "pas de liste de commandes")
-    end) end)
-else
-    -- Avec Handshake : Composants dessine « Commander », « J'apporte » et la barre des commandes par l'API de Handshake.
-    local ARTISAN = "Bel Dupont"
-    local function artisanConnu() -- son chuchotement : le jeu y joint son GUID (Handshake le retient)
-        FireEvent("CHAT_MSG_WHISPER", "bonjour", ARTISAN, "", "", ARTISAN, "", 0, 0, "", 0, 1, "Player-1-0000BE11")
-    end
-    local function commandes() return boutons(function(t) return t:find(" · ", 1, true) ~= nil end) end
-
-    test("avec Handshake : « Commander » un bloc ajoute une commande, son état se lit dans son contrat", function() sansRecettes(function()
-        SlashCmdList.COMPOSANTS("demo ceinture")
-        local p = projet()
-        assertEquals(1, #commandes()) -- tout le projet
-        local commander = boutons(function(t) return t == "Commander" end)
-        assertTrue(#commander > 0, "« Commander » sur les blocs")
-        commander[1]:Click()
-        assertEquals(2, #Handshake.Commandes(p))
-        local liste = commandes()
-        assertEquals(2, #liste)
-        assertTrue(liste[2]:GetText():find("pas envoyée", 1, true) ~= nil, liste[2]:GetText())
-        artisanConnu()
-        Handshake.Artisan(p, ARTISAN, 2)
-        liste[2]:Click()
-        bouton("Préparer la demande"):Click()
-        assertTrue(HandshakeContratsFrame:IsShown(), "le brouillon s'ouvre dans les contrats")
-        for _, c in ipairs(tous(HandshakeContratsFrame, function(c) return c.GetText and c:GetText() == "Envoyer la proposition" and c:IsShown() end)) do c:Click() end
-        HandshakeContratsFrame:Hide()
-        local texte = commandes()[2]:GetText()
-        assertTrue(texte:find("demande envoyée", 1, true) ~= nil, texte)
-        assertEquals("demande envoyée", Handshake.Commande(p, 2).etat)
-    end) end)
-
-    test("avec Handshake : rien à commander sur le Brouillon", function() sansRecettes(function()
-        SlashCmdList.COMPOSANTS("demo ceinture")
-        assertTrue(#boutons(function(t) return t == "Commander" end) > 0, "témoin : « Commander » sur un projet")
-        ouvrir("Brouillon")
-        choisir("Brouillon", "Vider le Brouillon")
-        ctrlClicDroit("|cffffffff|Hitem:10721::::::::1:::::::::|h[Ceinture]|h|r") -- un objet aux blocs nombreux
-        assertTrue(affiche("Brouillon"))
-        assertTrue(#tous(ComposantsFrame, function(c) return c.grp ~= nil and c:IsShown() end) > 0, "des blocs dessinés")
-        for _, t in ipairs({ "Commander", "Préparer la demande" }) do
-            assertNil(bouton(t), t .. " sur le Brouillon")
-        end
-        assertNil(deroulant("Plus"), "le menu « Plus » sur le Brouillon")
-        assertEquals(0, #commandes(), "pas de liste de commandes")
-        assertNil(HandshakeDB.commandes and HandshakeDB.commandes[ComposantsDB.brouillon.id], "rien de rangé chez Handshake")
-        choisir("Brouillon", "Vider le Brouillon")
-    end) end)
-
-    test("avec Handshake : Ctrl+clic sur une case, « j'apporte » marque l'apport de la commande", function() sansRecettes(function()
-        SlashCmdList.COMPOSANTS("demo ceinture")
-        local p = projet()
-        local carte
-        for _, c in ipairs(cases()) do if c.node.kind ~= "target" then carte = c break end end
-        local id = carte.node.id
-        local ctrl = IsControlKeyDown
-        IsControlKeyDown = function() return true end
-        local ok, err = pcall(carte.Click, carte)
-        IsControlKeyDown = ctrl
-        assertTrue(ok, tostring(err))
-        assertTrue(Handshake.Apports(p) ~= nil and Handshake.Apports(p)[id], "l'apport est un terme de la commande")
-        assertNil(p.apports, "le projet ne garde aucun apport")
-        local apportee
-        for _, c in ipairs(cases()) do if c.node.id == id then apportee = c.node end end
-        assertTrue(apportee.apport > 0, "la case est apportée dans l'arbre")
-    end) end)
-end
 
 -- Les Besoins défilent : une longue liste ne fait pas dépasser la fenêtre (retour de Virgile).
 test("Besoins : la fenêtre plafonne sa hauteur et la liste défile", function() sansRecettes(function()

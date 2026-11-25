@@ -2,9 +2,9 @@
 -- Réunir, est dans Besoins.lua ; une seule des deux visible, ns.montrerVue) ; le fil « Préparer › Réunir › Fabriquer » en
 -- haut des deux. À gauche, la colonne des projets (le Brouillon en tête) ; à droite, le nom du projet et le fil, la ligne
 -- d'ajout (Préparer seulement), son arbre par étages, et en bas un seul bouton d'action, qui suit la phase : « Lancer »,
--- la prochaine fabrication (Fabriquer.lua), « Clore ». En Fabriquer et Fini, l'arbre est en lecture seule. Avec Handshake,
--- la liste de ses commandes sous la ligne d'ajout, « Commander » sur chaque bloc et Ctrl+clic « j'apporte » sur une case,
--- dessinés ici en appelant l'API publique de Handshake (global Handshake, voir son README) : sans lui, rien de tout ça.
+-- la prochaine fabrication (Fabriquer.lua), « Clore ». En Fabriquer et Fini, l'arbre est en lecture seule. L'emplacement du
+-- bloc (Composants.Emplacements, API.lua) : un autre add-on dessine dans chaque bloc et sur la ligne du projet, et un bloc
+-- qu'il dit confié se réduit à une seule case ; Composants ne sait pas ce qu'il y dessine. Sans lui, rien de tout ça.
 -- Colonne 0 : ce qu'on suit. Étage 1 : ce qu'il faut pour le fabriquer. Étage 2 : ce qu'il faut pour ces
 -- composants, etc. Une seule case par objet : la barre de bronze du marteau et de la dague, c'est la même case,
 -- rangée à l'étage le plus profond où elle sert.
@@ -28,16 +28,28 @@ local COLORS = {
 }
 
 local frame, content, scroll
--- Handshake chargé ? (le jeu le charge avant Composants quand il est là : OptionalDeps)
-local function H() return Handshake end
--- Handshake, si ce projet peut avoir des commandes : jamais le Brouillon (on n'y commande rien), qui n'est donc jamais
--- passé à Handshake.
-local function HPour(p) return not ns.estBrouillon(p) and H() or nil end
+-- Le fournisseur des emplacements (API.lua), si ce projet en a : jamais le Brouillon (on n'y commande rien), qui ne lui est
+-- donc jamais passé.
+local function F(p) return not ns.estBrouillon(p) and ns.fournisseur or nil end
+-- Appeler le fournisseur : une erreur chez lui ne casse pas la fenêtre (elle est signalée).
+local function appel(fn, ...)
+  local ok, r = pcall(fn, ...)
+  if ok then return r end
+  geterrorhandler()(r)
+end
+-- Le bloc (nil = le projet entier) est-il confié ?
+local function confie(p, bloc)
+  local f = F(p)
+  return f and f.confie and appel(f.confie, p, bloc) and true or false
+end
 -- Le projet affiché ; déclaré ici, avant toute fonction qui l'appelle (déclaré plus bas, une bulle d'étiquette de commande
 -- appelait un « projet » global inexistant).
 local function projet() return ns.projetCourant() end
--- Les apports des commandes Handshake de ce projet (nil sans Handshake) : ces cases sortent de l'arbre.
-function ns.apportsHandshake(p) return HPour(p) and H().Apports(p) or nil end
+-- Les cases que le fournisseur dit fournies par un autre (nil sans lui) : elles sortent de l'arbre.
+function ns.apportsEmplacement(p)
+  local f = F(p)
+  return f and f.apports and appel(f.apports, p) or nil
+end
 -- Vue du dessin : zoom (× l'échelle qui fait tout tenir en largeur) et décalage, en unités du dessin.
 local view = { zoom = 1, x = 0, y = 0, fit = 1 }
 local function applyView()
@@ -50,7 +62,7 @@ end
 -- Couleur de chaque artisan, dans l'ordre de la liste (ton perso d'abord) ; rouge = personne ne sait le faire.
 local CRAFTER_COLORS = { { 0.66, 0.56, 1.00 }, { 0.30, 0.80, 0.85 }, { 0.95, 0.65, 0.25 }, { 0.95, 0.45, 0.75 }, { 0.45, 0.85, 0.58 } }
 local boxes = {}
--- Étiquettes des commandes entre artisans : survol = la liste, clic = en faire une commande à part pour l'artisan.
+-- Étiquettes des livraisons entre artisans : survol = la liste.
 local orderTags = {}
 local function bandName(b) return b == "reste" and "toi" or tostring(b) end
 local function newOrderTag()
@@ -66,27 +78,36 @@ local function newOrderTag()
     GameTooltip:AddLine(("Livraison : %s pour %s"):format(o.maker, bandName(o.client)))
     GameTooltip:AddLine(o.player and ("Par " .. o.player) or "Personne de ta liste n'a ce métier", 0.8, 0.8, 0.8)
     for _, id in ipairs(o.lines) do GameTooltip:AddLine(("%d× %s"):format(o.qty[id], ns.itemLabel(id)), 1, 1, 1) end
-    if HPour(projet()) then GameTooltip:AddLine("Pour la commander : « Commander » sur le titre du bloc", 0.66, 0.56, 1) end
     GameTooltip:Show()
   end)
   t:SetScript("OnLeave", function() GameTooltip:Hide() end)
   return t
 end
 local cards, lines, labels = {}, {}, {}
+-- Les zones de l'emplacement du bloc (API.lua) : des cadres vides que le fournisseur remplit à chaque dessin. Une bande
+-- (haute de 16, sur une ligne de titre ; le fournisseur règle sa largeur) ou une case (à la place d'un bloc confié) :
+-- jamais la même zone pour les deux.
+local function newZone(case, parent)
+  local z = CreateFrame("Frame", nil, parent or content, case and "BackdropTemplate" or nil)
+  z:SetFrameLevel(content:GetFrameLevel() + 5)
+  z.emplacement = true
+  if case then
+    z:SetSize(NODE_W, NODE_H)
+    z:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+    z:SetBackdropColor(0.11, 0.11, 0.14, 0.95)
+    z:SetBackdropBorderColor(0.66, 0.56, 1.00, 0.5)
+  else
+    z:SetSize(1, 16)
+  end
+  return z
+end
+local zonesCase, zoneProjet, caseProjet = {}, nil, nil
 
 local function opts() return ns.db().options end
--- Affichage seulement (« il le fournit », « mon prix ») : ce qui se modifie, la fenêtre le demande au projet (ns.projetPeut).
-local function replying() return HPour(projet()) and H().EstReponse(projet()) end -- « je réponds » : la Réponse de Handshake
+-- Ce qui se modifie, la fenêtre le demande au projet (ns.projetPeut).
 local function lignes() return (ns.projetPeut(projet(), "lignes")) end -- ajouter, retirer, changer une quantité
 -- Fabriquer et Fini : l'arbre en lecture seule (ni « + », ni quantités, ni choix de case) ; « Préparer » dans le fil pour changer.
 local function lectureSeule() return ns.phase(projet()) ~= "preparer" end
--- Avec Handshake, la commande choisie dans le projet affiché (1 = tout le projet) : Joueur, Offre, « Préparer la demande »
--- et « En clair » portent sur elle. Un autre projet affiché : retour à 1.
-local choisie = {}
-local function laCommande()
-  if choisie.p ~= projet() then choisie.p, choisie.i = projet(), 1 end
-  return choisie.i
-end
 
 ---------------------------------------------------------------------------------------------------
 -- Le fil (CONTEXT.md, Phase) « Préparer › Réunir › Fabriquer », en haut des deux vues : la phase du projet affiché se lit
@@ -195,16 +216,66 @@ end
 -- de son parent le plus à droite. Bandes : un bloc = ses cases + ce qui n'est pas fabriqué sous elles (rattaché à son
 -- premier parent), puis le reste (acheté ou en stock).
 -- Chaque bloc reçoit sa couleur (index), son titre (label) et ses cases dessinées (cards).
-function ns.dessinArbre(res)
-  local list, edges = res.cases, res.liens
+-- confies (facultatif) = { [métier] = true } : ces blocs (confiés, l'emplacement du bloc) se réduisent à une seule case
+-- (ns.reduire) ; grp.case = elle, à la place de leurs cases.
+-- Un bloc confié : sa case la plus haute (une ligne du projet, sinon ce qu'il livre à un autre bloc) le représente ; ses
+-- autres cases s'y fondent, et ce qui n'est pas fabriqué sous lui (la part de l'artisan) sort du dessin, sauf ce qu'un autre
+-- y prend aussi. Les liens passent par elle, un seul par paire de cases, sans quantité quand plusieurs s'y fondent.
+-- Rend les cases et les liens à dessiner (les mêmes tables quand rien n'est confié).
+function ns.reduire(res, confies)
+  if not (confies and next(confies)) then return res.cases, res.liens end
+  local bloc, rep = {}, {}
+  for _, grp in ipairs(res.blocs) do
+    for _, n in ipairs(grp.cases) do bloc[n] = grp.key end
+    if confies[grp.key] then
+      for _, n in ipairs(grp.cases) do if not rep[grp.key] and (n.kind == "target" or grp.qty[n.id]) then rep[grp.key] = n end end
+      rep[grp.key] = rep[grp.key] or grp.cases[1]
+      grp.case = rep[grp.key]
+    end
+  end
+  -- La bande d'une case pas fabriquée : celle de son premier parent (la règle du dessin, plus bas).
+  local premier = {}
+  for _, e in ipairs(res.liens) do premier[e.to] = premier[e.to] or e.from end
+  local function bande(n, k)
+    if bloc[n] ~= nil or k > #res.cases then return bloc[n] end
+    return premier[n] and bande(premier[n], k + 1)
+  end
+  local vers = {} -- vers[n] = la case qui la dessine (elle-même, la case de son bloc confié), nil = sortie du dessin
+  for _, n in ipairs(res.cases) do
+    local b = bande(n, 0)
+    if not rep[b] then vers[n] = n
+    elseif bloc[n] then vers[n] = rep[b]
+    else
+      for _, e in ipairs(res.liens) do if e.to == n and bande(e.from, 0) ~= b then vers[n] = n end end
+    end
+  end
+  local list, edges, vu = {}, {}, {}
+  for _, n in ipairs(res.cases) do if vers[n] == n then list[#list + 1] = n end end
+  for _, e in ipairs(res.liens) do
+    local f, t = vers[e.from], vers[e.to]
+    local k = f and t and f ~= t and (f.key .. ">" .. t.key)
+    if k and not vu[k] then
+      vu[k] = true
+      edges[#edges + 1] = { from = f, to = t, livraison = e.livraison,
+        qty = (f == e.from and t == e.to) and e.qty or nil }
+    end
+  end
+  return list, edges
+end
+
+function ns.dessinArbre(res, confies)
+  local list, edges = ns.reduire(res, confies)
+  local parents = {}
+  for _, n in ipairs(list) do parents[n] = {} end
+  for _, e in ipairs(edges) do table.insert(parents[e.to], e.from) end
   local last = 0
   for _, n in ipairs(list) do n.col = n.kind == "target" and 0 or 1 end
   for _ = 1, #list do -- ponytail: relaxation O(n²), assez pour quelques dizaines de cases ; s'arrête sur une boucle
     local changed = false
     for _, n in ipairs(list) do
       if n.kind == "item" then
-        local c = #n.parents == 0 and 0 or 1
-        for _, p in ipairs(n.parents) do c = math.max(c, p.col + 1) end
+        local c = #parents[n] == 0 and 0 or 1
+        for _, p in ipairs(parents[n]) do c = math.max(c, p.col + 1) end
         if c ~= n.col then n.col, changed = c, true end
       end
     end
@@ -294,7 +365,7 @@ end
 
 -- Ce que fait un clic sur la case : revenir au calcul si le choix était forcé, sinon forcer l'inverse.
 local function toggleOf(n)
-  if n.apport > 0 then return end -- apporté par une commande Handshake : Ctrl+clic pour le reprendre
+  if n.apport > 0 then return end -- fourni par un autre (l'emplacement du bloc) : hors de l'arbre
   if n.fabrication then return end -- une fabrication du projet : toujours fabriquée
   if n.choix then return "reset" end
   if n.made > 0 then return "acheter" end
@@ -387,11 +458,7 @@ local function newCard()
     elseif t == "fabriquer" then
       GameTooltip:AddLine(n.need == 0 and "Clic : le fabriquer au lieu de prendre ton stock" or "Clic : le décomposer (fabriquer) même si c'est plus cher", 0.6, 0.6, 0.6)
     end
-    if HPour(projet()) and not lectureSeule() then -- l'apport : un terme des commandes Handshake du projet
-      local who = replying() and "Il le fournit" or "Tu le fournis"
-      if n.apport > 0 then GameTooltip:AddLine(("%s : %d (Ctrl+clic pour le reprendre)"):format(who, n.apport), 0.3, 0.8, 0.85)
-      elseif n.kind ~= "target" then GameTooltip:AddLine("Ctrl+clic : " .. who:lower(), 0.6, 0.6, 0.6) end
-    end
+    if n.apport > 0 then GameTooltip:AddLine(("Fourni : %d, hors de l'arbre"):format(n.apport), 0.3, 0.8, 0.85) end
     if n.kind == "target" and lignes() and not lectureSeule() then GameTooltip:AddLine("Clic droit : ne plus suivre", 0.6, 0.6, 0.6) end
     GameTooltip:Show()
   end)
@@ -402,9 +469,6 @@ local function newCard()
     if lectureSeule() then return end
     if button == "RightButton" then
       if n.kind ~= "target" or not ns.projetRetirer(projet(), n.index) then return end
-    elseif IsControlKeyDown() and n.kind ~= "target" then -- « j'apporte » : un apport des commandes Handshake
-      if not HPour(projet()) then return end
-      H().Apporter(projet(), n.id, n.apport == 0)
     else
       local t = toggleOf(n)
       if not t then return end
@@ -486,7 +550,7 @@ local function subText(n)
   end
   local cost = n.madeCost + n.cost
   if cost > 0 then s = s .. " · " .. ns.moneyShort(cost) end
-  if n.apport > 0 then s = s .. (" |cff4dccd9%d fourni par %s|r"):format(n.apport, replying() and "lui" or "toi") end
+  if n.apport > 0 then s = s .. (" |cff4dccd9%d fourni|r"):format(n.apport) end
   if n.incomplete then s = s .. " |cffe64d4d+ ?|r" end
   return s
 end
@@ -536,11 +600,16 @@ end
 local function refresh()
   if not (frame and frame:IsShown()) then return end
   if ns.phase(projet()) == "reunir" then return ns.montrerVue() end -- la vue de Réunir, c'est la petite
-  local res = ns.projetArbre(projet(), nil, ns.apportsHandshake(projet()))
+  local res = ns.projetArbre(projet(), nil, ns.apportsEmplacement(projet()))
   ns.avancerPhase(projet(), res) -- Fabriquer → Fini, tout seul
-  local roots, market, total, incomplete, g = res.roots, res.market, res.total, res.incomplete, ns.dessinArbre(res)
+  -- L'emplacement du bloc : les blocs confiés, chacun réduit à une case ; le projet entier confié, une seule case en tout.
+  local p, f = projet(), F(projet())
+  local entier, confies = #res.roots > 0 and confie(p, nil), {}
+  for _, grp in ipairs(res.blocs) do confies[grp.key] = confie(p, grp) or nil end
+  local g = ns.dessinArbre(entier and { cases = {}, liens = {}, blocs = {}, livraisons = {}, caseDe = {} } or res, confies)
+  if entier then g.height = NODE_H end
+  local roots, market, total, incomplete = res.roots, res.market, res.total, res.incomplete
   frame.syncProjet()
-  if frame.syncOrder then frame.syncOrder() end
 
   -- Les étages s'étalent sur la largeur ; trop nombreux, le dessin rétrécit pour tenir (puis molette pour zoomer).
   local avail = scroll:GetWidth()
@@ -558,23 +627,32 @@ local function refresh()
   else
     local o, cost = projet(), ns.moneyShort(total) .. (incomplete and " |cffe64d4d+ ?|r" or "")
     local fini = ns.phase(o) == "fini" and " · |cff59cc73Tout est fabriqué|r" or "" -- la phase Fini
-    if replying() then -- ma part, mon prix, ce qui reste pour mon travail
-      local price = H().Commande(o).tip or 0
-      header(1, 0, ("Ma part · %s · mon prix %s · travail %s"):format(cost, ns.moneyShort(price), ns.moneySigned(price - total)) .. fini)
-    else
-      -- Valeur à l'HV de ce qu'on fabrique, et ce que ça rapporte quand le coût est complet ; rien sans prix.
-      local v = res.valeur and (" · vaut %s à l'HV · %s"):format(ns.moneyShort(res.valeur),
-        res.rapporte and "rapporte " .. ns.moneySigned(res.rapporte) or "|cffe64d4dcoût incomplet|r") or ""
-      header(1, 0, (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost .. v .. fini)
-    end
+    -- Valeur à l'HV de ce qu'on fabrique, et ce que ça rapporte quand le coût est complet ; rien sans prix.
+    local v = res.valeur and (" · vaut %s à l'HV · %s"):format(ns.moneyShort(res.valeur),
+      res.rapporte and "rapporte " .. ns.moneySigned(res.rapporte) or "|cffe64d4dcoût incomplet|r") or ""
+    header(1, 0, (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost .. v .. fini)
+  end
+  -- L'emplacement du projet entier : une bande à la suite de cette ligne ; confié, la seule case de l'arbre.
+  zoneProjet, caseProjet = zoneProjet or newZone(), caseProjet or newZone(true)
+  local zp = entier and caseProjet or zoneProjet
+  zoneProjet:Hide(); caseProjet:Hide()
+  if f and #roots > 0 then
+    zp:ClearAllPoints()
+    if entier then zp:SetPoint("TOPLEFT", content, "TOPLEFT", MARGIN, -TOP)
+    else zp:SetPoint("LEFT", headers[1], "RIGHT", 12, 0); zp:SetWidth(1) end
+    zp:Show()
+    appel(f.bloc, zp, p, nil, entier)
   end
 
   local x = function(n) return MARGIN + n.col * spacing end
+  local caseDuBloc = {} -- la case d'un bloc confié : le fournisseur la dessine (plus bas), pas de case de Composants
+  for _, grp in ipairs(g.groups or {}) do if confies[grp.key] and grp.case then caseDuBloc[grp.case] = grp end end
   for i, n in ipairs(g.nodes) do
     local c = cards[i] or newCard()
     cards[i] = c
     c.node = n
     c:ClearAllPoints()
+    c:SetShown(not caseDuBloc[n])
     c:SetPoint("TOPLEFT", content, "TOPLEFT", x(n), -(n.y + TOP))
     local k = stateColor(n)
     c.accent:SetColorTexture(k[1], k[2], k[3], 0.9)
@@ -589,7 +667,6 @@ local function refresh()
     local sign = lectureSeule() and "" or (n.made > 0 and "–") or (t and "+") or ""
     c.toggle:SetText(n.choix and ("|cffa98fff" .. sign .. "|r") or sign)
     bar(c, n)
-    c:Show()
   end
   for i = #g.nodes + 1, #cards do cards[i]:Hide() end
   -- En Fabriquer, le bouton d'action en bas nomme la prochaine fabrication, sa case cerclée (Fabriquer.lua).
@@ -597,13 +674,13 @@ local function refresh()
     for i = 1, #g.nodes do if cards[i].node.id == id then return cards[i] end end
   end)
   if #roots > 0 then -- un « Étage » que la ligne du projet recouvrirait est sauté (la case de l'étape dit déjà où l'on est)
-    local libre = headers[1]:GetStringWidth() + 24
+    local libre = headers[1]:GetStringWidth() + 24 + (zoneProjet:IsShown() and zoneProjet:GetWidth() + 12 or 0)
     for c = 1, g.cols - 1 do if spacing * c >= libre then header(c + 1, spacing * c, "Étage " .. c) end end
   end
 
   -- Un rectangle par artisan : toutes ses cases (et ce qui n'est pas fabriqué sous elles), à sa couleur, son nom
   -- au-dessus (et « recette à apprendre »). Rouge : personne de ta liste ne sait le faire.
-  local usedBoxes, boxOf = 0, {}
+  local usedBoxes, boxOf, usedZones = 0, {}, 0
   for _, grp in ipairs(g.groups or {}) do
     local top, bottom, left, right = math.huge, -math.huge, math.huge, -math.huge
     for _, n in ipairs(grp.cards) do
@@ -637,34 +714,8 @@ local function refresh()
         GameTooltip:Show()
       end)
       b.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
-      -- « Commander » (Handshake seulement) : tout le bloc en une commande du projet — ce qu'il livre, et ce qu'il reçoit des
-      -- autres blocs en apport. Elle s'ajoute à la liste des commandes, sur la même page.
-      b.cmd = CreateFrame("Button", nil, b, "BackdropTemplate")
-      b.cmd:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-      b.cmd:SetBackdropColor(0.16, 0.15, 0.25, 0.95)
-      b.cmd.text = b.cmd:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-      b.cmd.text:SetPoint("CENTER")
-      b.cmd.text:SetText("Commander")
-      b.cmd:SetSize(b.cmd.text:GetStringWidth() + 14, 16)
-      b.cmd:SetPoint("LEFT", b.name, "RIGHT", 8, 0)
-      b.cmd:SetScript("OnEnter", function(self)
-        local grp = b.grp
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine(("Commander le bloc %s%s"):format(grp.key, grp.best and (" à " .. grp.best) or ""))
-        for _, id in ipairs(grp.deliver) do GameTooltip:AddLine(("%d× %s"):format(grp.qty[id], ns.itemLabel(id)), 1, 1, 1) end
-        local brought = {}
-        for id in pairs(grp.inputs) do brought[#brought + 1] = ns.itemLabel(id) end
-        if #brought > 0 then GameTooltip:AddLine("Tu fournis : " .. table.concat(brought, ", "), 0.3, 0.8, 0.85, true) end
-        GameTooltip:AddLine("Clic : une commande de ce bloc, ajoutée aux commandes du projet", 0.66, 0.56, 1)
-        GameTooltip:Show()
-      end)
-      b.cmd:SetScript("OnLeave", function() GameTooltip:Hide() end)
-      b.cmd:SetFontString(b.cmd.text) -- (GetText, pour les tests du simulateur)
-      b.cmd:SetScript("OnClick", function()
-        choisie.p, choisie.i = projet(), H().Commander(projet(), b.grp)
-        print(("Composants : le bloc %s est dans les commandes du projet."):format(b.grp.key))
-        ns.refreshCraftWindow()
-      end)
+      b.zone = newZone(false, b) -- l'emplacement du bloc, sur sa ligne de titre (caché avec lui)
+      b.zone:SetPoint("LEFT", b.name, "RIGHT", 8, 0)
       boxes[usedBoxes] = b
     end
     local k = #grp.crafters > 0 and CRAFTER_COLORS[(grp.index - 1) % #CRAFTER_COLORS + 1] or COLORS.none
@@ -677,17 +728,30 @@ local function refresh()
     b.name:SetTextColor(k[1], k[2], k[3])
     b.name:SetText(grp.label)
     b.grp = grp
-    b.cmd:SetShown(HPour(projet()) ~= nil)
     b:Show()
+    -- L'emplacement : une bande sur la ligne de titre ; confié, la case du bloc (à la place de la sienne).
+    b.zone:SetShown(f ~= nil and not grp.case)
+    if b.zone:IsShown() then b.zone:SetWidth(1); appel(f.bloc, b.zone, p, grp, false) end
+    if f and grp.case then
+      usedZones = usedZones + 1
+      local z = zonesCase[usedZones] or newZone(true)
+      zonesCase[usedZones] = z
+      z:ClearAllPoints()
+      z:SetPoint("TOPLEFT", content, "TOPLEFT", x(grp.case), -(grp.case.y + TOP))
+      z:Show()
+      appel(f.bloc, z, p, grp, true)
+    end
   end
   for i = usedBoxes + 1, #boxes do boxes[i]:Hide() end
+  for i = usedZones + 1, #zonesCase do zonesCase[i]:Hide() end
 
   -- Chaque courbe part et arrive à sa propre hauteur sur le bord de la case, dans l'ordre des cases d'en face :
   -- pas de croisement au départ, et les quantités ne se marchent pas dessus.
   -- ponytail: au-delà de 3 courbes sur un même bord, les quantités se rapprochent trop ; agrandir NODE_H si ça arrive
   local outs, ins, drawn = {}, {}, {}
+  local livree = {}
   for _, e in ipairs(g.edges) do -- une livraison entre blocs : un seul lien (le premier), épais
-    if not e.livraison or e.livraison.edges[1] == e then drawn[#drawn + 1] = e end
+    if not e.livraison or not livree[e.livraison] then drawn[#drawn + 1], livree[e.livraison or e] = e, true end
   end
   for _, e in ipairs(drawn) do
     outs[e.from] = outs[e.from] or {}
@@ -743,7 +807,7 @@ local function refresh()
       local k = b.color
       t:SetBackdropBorderColor(k[1], k[2], k[3], 0.9)
       t:ClearAllPoints()
-      t:SetPoint("LEFT", shelf[b] or (b.cmd:IsShown() and b.cmd or b.name), "RIGHT", 6, 0)
+      t:SetPoint("LEFT", shelf[b] or (b.zone:IsShown() and b.zone or b.name), "RIGHT", 6, 0)
       shelf[b] = t
       t:Show()
     end
@@ -794,111 +858,9 @@ end
 -- dans le projet affiché.
 local function searchBox(qty) return AzerothCommune.RechercheObjets(frame, qty, track) end
 
--- La barre des commandes, quand Handshake est chargé (reprise telle quelle de Handshake, son repensage est Handshake#20) :
--- l'artisan et l'offre de la commande choisie, la liste des commandes du projet avec leur état (lu dans leur contrat par
--- Handshake), « Préparer la demande » (ou « Contre-proposer » dans une Réponse, « Voir la demande » une fois partie),
--- « Importer » une liste reçue, « En clair ». Tout passe par l'API publique de Handshake.
--- Sa ligne : de ancreG (à gauche) à ancreD (à droite), sous la ligne d'ajout ; la liste des commandes dessous.
-function ns.barreCommandes(frame, button, input, label, ancreG, ancreD)
-  local hs = H()
-  local playerL = label("Joueur", ancreG, 0)
-  local player = input(120, function(v) hs.Artisan(projet(), v, laCommande()); frame.syncOrder() end)
-  player:SetPoint("LEFT", playerL, "RIGHT", 10, 0)
-  local tipL = label("Offre", player, 14)
-  local tip = input(48, function(v)
-    local n = tonumber((v:gsub(",", ".")))
-    hs.Offre(projet(), n and math.floor(n * 10000 + 0.5) or nil, laCommande())
-    if replying() and laCommande() == 1 then return refresh() end -- l'en-tête montre ce qui reste pour mon travail
-    frame.syncOrder()
-  end)
-  tip:SetPoint("LEFT", tipL, "RIGHT", 10, 0)
-  local poL = label("po", tip, 4)
-  local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  hint:SetPoint("LEFT", poL, "RIGHT", 12, 0)
-  -- Ce qui sert rarement (importer une liste reçue, l'envoyer en clair, l'annoncer dans le Commerce) : dans le menu « Plus »,
-  -- pas en boutons.
-  local plusB = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
-  plusB:SetWidth(80)
-  plusB:OverrideText("Plus")
-  plusB:SetupMenu(function(_, root)
-    root:CreateButton("Importer une liste reçue", function() hs.Importer() end)
-    root:CreateButton("Envoyer la commande en clair", function() hs.EnClair(projet(), laCommande()) end)
-    root:CreateButton("Annoncer dans le Commerce", function() hs.Annoncer(projet(), laCommande()) end)
-  end)
-  plusB:SetPoint("RIGHT", ancreD, "LEFT", -6, 0)
-  local contractB = button("Préparer la demande", 150, function()
-    hs.Preparer(projet(), laCommande())
-    frame.syncOrder()
-  end)
-  contractB:SetPoint("RIGHT", plusB, "LEFT", -6, 0)
-  -- Les commandes du projet, une par bouton : sa part, son artisan et son offre, ou « vide » (son bloc a disparu), puis
-  -- son état (lu dans son contrat), l'écart de sa caution à mon estimation (P8, rouge au-delà du seuil) ; clic = la choisir.
-  local cmdL = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  cmdL:SetPoint("TOPLEFT", X0, -108)
-  cmdL:SetText("Commandes :")
-  local cmdB, actB = {}, {}
-  local fixes = { playerL, player, tipL, tip, poL, hint, plusB, contractB, cmdL } -- cachés sur le Brouillon
-  -- À côté d'une commande : « Nouvelle version » (envoyée, sa part du projet a changé ; le contrat préparé s'ouvre
-  -- dans Contrats, il part de là) ou « Commander de nouveau » (refusée, retirée, échue).
-  local function agir(self)
-    local i = hs.Agir(projet(), self.i)
-    if i then choisie.p, choisie.i = projet(), i end
-    frame.syncOrder()
-  end
-  frame.syncOrder = function()
-    local hors = ns.estBrouillon(projet()) -- on n'y commande rien : ni barre, ni commandes, rien demandé à Handshake
-    for _, w in ipairs(fixes) do w:SetShown(not hors) end
-    if hors then
-      for i = 1, #cmdB do cmdB[i]:Hide(); actB[i]:Hide() end
-      return
-    end
-    local o, sel = projet(), laCommande()
-    local vues = hs.Commandes(o)
-    local c = vues[sel]
-    if not player:HasFocus() then player:SetText(c.player or "") end
-    if not tip:HasFocus() then tip:SetText(c.tip and c.tip > 0 and (("%.2f"):format(c.tip / 10000):gsub("%.?0+$", "")) or "") end
-    player:SetEnabled(not c.fige); tip:SetEnabled(not c.fige) -- envoyée : son artisan et son offre sont ceux du contrat
-    tipL:SetText(c.reponse and "Mon prix" or "Offre")
-    if frame.apportLegend then frame.apportLegend:SetText(replying() and "fourni par lui" or "fourni par toi") end
-    contractB:SetText(c.reponse and "Contre-proposer" or c.fige and "Voir la demande" or "Préparer la demande")
-    hint:SetText(replying() and "Ctrl+clic sur une case : il la fournit / je la reprends" or "Ctrl+clic sur une case : je la fournis")
-    local prev = cmdL
-    for i, v in ipairs(vues) do
-      local b = cmdB[i]
-      if not b then
-        b = button("", 60, function(self) choisie.p, choisie.i = projet(), self.i; frame.syncOrder() end)
-        cmdB[i], actB[i] = b, button("", 60, agir)
-      end
-      b.i = i
-      b:ClearAllPoints()
-      b:SetPoint("LEFT", prev, "RIGHT", 6, 0)
-      -- ponytail: une seule ligne ; au-delà de 4 ou 5 commandes elle dépasse à droite, passer à deux lignes alors
-      local text = ("%s · %s%s%s"):format(v.reponse and "réponse" or v.part, v.vide and "vide" or (v.player or "artisan ?"),
-        not v.vide and v.tip and v.tip > 0 and (" · " .. ns.moneyShort(v.tip)) or "", v.etat and (" · " .. v.etat) or "")
-      local prix = v.incomplet and " · |cffe6994destimation incomplète|r"
-        or v.ecartPrix and (" · caution %s%+.0f %%|r"):format(v.alertePrix and "|cffe64d4d" or "|cff59cc73", v.ecartPrix) or ""
-      b:SetText((i == sel and ("|cffa98fff" .. text .. "|r") or text) .. prix .. (v.ecart and (" · |cffe6994d" .. v.ecart .. "|r") or ""))
-      b:SetWidth(b:GetTextWidth() + 24)
-      b:Show()
-      prev = b
-      local a, act = actB[i], v.fige and v.ecart and "Nouvelle version" or v.recommander and "Commander de nouveau"
-      a.i = i
-      a:SetShown(act and true or false)
-      if act then
-        a:SetText(act)
-        a:SetWidth(a:GetTextWidth() + 24)
-        a:ClearAllPoints()
-        a:SetPoint("LEFT", b, "RIGHT", 2, 0)
-        prev = a
-      end
-    end
-    for i = #vues + 1, #cmdB do cmdB[i]:Hide(); actB[i]:Hide() end
-  end
-end
-
 -- Supprimer un projet (clic droit dans la colonne, « Clore ») : le projet affiché le reste, sinon le suivant de la liste ;
--- plus aucun projet : le Brouillon (pas un projet vide créé pour rien). Signalé : Handshake efface ses commandes pas
--- encore parties, jamais un contrat.
+-- plus aucun projet : le Brouillon (pas un projet vide créé pour rien). Signalé (QuandChange) : un autre add-on y range ce
+-- qu'il doit.
 local function supprimer(p)
   local affiche = projet()
   local _, i = ns.projet(p.id)
@@ -1054,7 +1016,6 @@ local function reglages(page, ancre)
 end
 
 local function build()
-  local hs = H() -- Handshake ne se charge pas en cours de partie : ses widgets sont faits une fois, ou jamais
   frame = ns.newWindow("ComposantsFrame", "Composants", W, H_FEN)
   frame.title:SetText("") -- la colonne des projets prend le coin
   local function button(text, w, onClick)
@@ -1064,33 +1025,15 @@ local function build()
     b:SetScript("OnClick", onClick)
     return b
   end
-  local function input(w, onChange)
-    local e = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
-    e:SetSize(w, 22)
-    e:SetAutoFocus(false)
-    e:SetScript("OnTextChanged", function(self, user) if user then onChange(self:GetText()) end end)
-    e:SetScript("OnEnterPressed", e.ClearFocus)
-    return e
-  end
-  local function label(text, anchor, gap)
-    local t = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    t:SetPoint("LEFT", anchor, "RIGHT", gap or 12, 0)
-    t:SetText(text)
-    return t
-  end
   local function surBrouillon() return ns.estBrouillon(projet()) end
   frame.syncColonne = colonne(frame)
 
   -- L'en-tête : le nom du projet et le fil, rien d'autre. On renomme par la colonne (clic droit).
-  -- ponytail: un EditBox inerte et pas un FontString : les tests de Handshake lisent le nom affiché dans un EditBox ; un
-  -- FontString quand ils auront changé (Composants#26).
-  local orderName = CreateFrame("EditBox", nil, frame)
-  orderName:SetFontObject(GameFontNormalLarge)
+  local orderName = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   orderName:SetSize(320, 24)
   orderName:SetPoint("TOPLEFT", X0, -8)
-  orderName:SetAutoFocus(false)
   orderName:SetJustifyH("LEFT")
-  orderName:EnableMouse(false)
+  orderName:SetWordWrap(false)
   frame.syncFil = ns.fil(frame, X0 + 330, -10)
 
   -- Ligne d'ajout, en Préparer seulement : la recherche (taper un nom, ou y déposer un objet) et la quantité.
@@ -1148,20 +1091,10 @@ local function build()
     GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
     GameTooltip:AddLine("Clore")
     GameTooltip:AddLine("Tout est fabriqué : le projet sort de la liste.", 1, 1, 1, true)
-    if HPour(projet()) then GameTooltip:AddLine("Ses commandes pas encore parties sont effacées ; un contrat, jamais.", 0.6, 0.6, 0.6, true) end
     GameTooltip:Show()
   end)
   clore:SetScript("OnLeave", function() GameTooltip:Hide() end)
   frame.clore = clore
-
-  -- La barre des commandes de Handshake : sa ligne sous la ligne d'ajout, de la gauche (après la colonne) à la droite.
-  if hs then
-    local g = CreateFrame("Frame", nil, frame)
-    g:SetSize(1, 22); g:SetPoint("TOPLEFT", X0 - 1, -76)
-    local d = CreateFrame("Frame", nil, frame)
-    d:SetSize(1, 22); d:SetPoint("TOPRIGHT", -8, -76)
-    ns.barreCommandes(frame, button, input, label, g, d)
-  end
 
   -- La zone de dessin : molette = zoom autour du curseur, glisser le fond = déplacer, clic du milieu = vue ajustée.
   scroll = CreateFrame("Frame", nil, frame)
@@ -1173,7 +1106,6 @@ local function build()
   frame.syncProjet = function()
     local b, ph = surBrouillon(), ns.phase(projet())
     orderName:SetText(b and "Brouillon" or projet().name or "")
-    orderName:SetCursorPosition(0)
     frame.syncFil()
     frame.syncColonne()
     for _, w in ipairs(ajout) do w:SetShown(ph == "preparer") end
@@ -1181,7 +1113,7 @@ local function build()
     lancerB:SetShown(ph == "preparer")
     lancerB:SetEnabled(#projet().lines > 0)
     clore:SetShown(ph == "fini")
-    scroll:SetPoint("TOPLEFT", X0 - 4, hs and -128 or ph == "preparer" and -74 or -42)
+    scroll:SetPoint("TOPLEFT", X0 - 4, ph == "preparer" and -74 or -42)
   end
   content = CreateFrame("Frame", nil, scroll)
   content:SetSize(W - X0 - 14, 1)

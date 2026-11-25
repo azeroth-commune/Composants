@@ -1,6 +1,6 @@
 -- Composants, les projets (glossaire : CONTEXT.md) : ce que je veux faire fabriquer (des objets × quantités) et mes choix
 -- de case (décomposer, acheter) ; son arbre fusionné en cases (une par objet) et ses blocs (un par métier, avec qui peut
--- les faire). Il ne connaît ni commandes, ni apports, ni contrats (Handshake, quand il est là) ; un autre add-on peut tenir
+-- les faire). Il ne connaît ni contrats ni autres joueurs (l'emplacement du bloc, API.lua, les laisse à un autre add-on) ; un autre add-on peut tenir
 -- ses lignes (projet tenu). Toute modification d'un projet passe par ce module, qui la signale (ns.quandChange) ; la
 -- fenêtre (Fenetre.lua) ne fait que dessiner.
 -- Enregistrés dans ComposantsDB.projets[i] = { id (son identité), name, lines = { { id, qty } ou { recette, fois } (une
@@ -98,7 +98,7 @@ function ns.avancerPhase(p, res)
   if ns.estBrouillon(p) then return false end
   local avant = ns.phase(p)
   if avant == "reunir" and ns.toutReuni(p) then ns.projetPhase(p, "fabriquer") end
-  if ns.phase(p) == "fabriquer" and ns.projetFini(res or ns.projetArbre(p, nil, ns.apportsHandshake(p))) then
+  if ns.phase(p) == "fabriquer" and ns.projetFini(res or ns.projetArbre(p, nil, ns.apportsEmplacement(p))) then
     ns.projetPhase(p, "fini")
   end
   return ns.phase(p) ~= avant
@@ -207,7 +207,7 @@ end
 ---------------------------------------------------------------------------------------------------
 -- Les cases : roots[i] = plan d'une ligne (ns.plan), fusionnés. Clés : "T<i>" la ligne i, "I<id>" un objet (toutes ses
 -- apparitions additionnées). Un objet peut être en partie en stock, en partie fabriqué (made), en partie acheté (need),
--- ou retiré de l'arbre (apport : une case qu'une commande Handshake apporte). n.choix = le choix de case du projet ; n.parents / n.children et les liens (from, to, qty) : l'arbre.
+-- ou retiré de l'arbre (apport : une case fournie par un autre, l'emplacement du bloc). n.choix = le choix de case du projet ; n.parents / n.children et les liens (from, to, qty) : l'arbre.
 local function cases(roots, choix)
   local nodes, list, edges, byPair = {}, {}, {}, {}
   local function nodeOf(key, kind, id)
@@ -363,7 +363,7 @@ local function blocs(res, crafters)
     end
   end
   -- Un bloc : ce qu'il livre (aux autres blocs, et les objets du projet qu'il fabrique), ce qu'il reçoit des autres
-  -- blocs (ses apports quand Handshake le commande). Étape = 1 + la plus haute étape de ses fournisseurs : on fait du
+  -- blocs (ses apports quand on le confie à un autre). Étape = 1 + la plus haute étape de ses fournisseurs : on fait du
   -- bas vers le haut.
   for _, grp in ipairs(groups) do grp.deliver, grp.qty, grp.inputs = {}, {}, {} end
   local function give(grp, id, q)
@@ -421,8 +421,8 @@ local function valeurHV(roots, market, total, incomplete)
 end
 
 -- L'arbre d'un projet, comme s'il était seul (tout le stock pour lui, ses lignes l'une après l'autre sur ce stock). p : un
--- projet, ou toute table { lines, choix } (Handshake y passe la part d'une commande). opts : options de stock et de recettes
--- (celles de la fenêtre par défaut). apports (facultatif) = { [id] = true }, les cases qu'une commande Handshake apporte :
+-- projet, ou toute table { lines, choix } (un autre add-on y passe une part du projet). opts : options de stock et de recettes
+-- (celles de la fenêtre par défaut). apports (facultatif) = { [id] = true }, les cases fournies par un autre :
 -- elles sortent de l'arbre, le projet ne les garde pas.
 -- Renvoie { roots, cases, caseDe, liens, blocs, blocDe, livraisons, total, incomplete, market, valeur, rapporte }.
 function ns.projetArbre(p, opts, apports)
