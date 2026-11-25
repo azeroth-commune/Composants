@@ -67,6 +67,7 @@ local res = C.Arbre(p, sansStock, apports)
 -- sansStock = true : toutes les recettes, aucun stock déduit ; sinon les options de la fenêtre (sacs, banque…).
 -- apports = { [itemID] = true } facultatif : ces cases (et ce qu'il y a dessous) sortent de l'arbre, n.apport = leur quantité.
 -- res = { roots (le plan de chaque ligne), cases, caseDe (["T<i>"] ligne i, ["I<id>"] un objet), liens, total, incomplete,
+--   valeur (Valeur à l'HV : ses objets au prix le plus bas, nil sans prix), rapporte (nil si coût incomplet),
 --   blocs (un par métier : key, step, cases, deliver, qty, inputs, crafters, best), blocDe[métier], livraisons, market }
 -- Signal et fenêtre
 C.QuandChange(function(p, quoi) end) -- après chaque modification : "nouveau", "lignes", "choix", "nom", "tenu", "supprime"

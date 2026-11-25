@@ -30,6 +30,10 @@ _Avoid_: liste de courses, shopping
 Un objet des Besoins que le joueur compte récolter plutôt qu'acheter ; il le décide dans les Besoins, une fois pour tous ses projets, et peut revenir sur ce choix d'un clic ; sans ce choix, l'objet est à acheter. Ce n'est pas un choix de case (qui appartient à un projet).
 _Avoid_: farm, choix de récolte
 
+**Valeur à l'HV** (d'un projet):
+Ce que valent à l'HV les objets que le projet fabrique, ses objets de premier rang (la racine de chaque ligne), au prix le plus bas de l'HV × leur quantité ; avec un coût complet, ce que ça **rapporte** : la valeur moins la part de l'HV (5 %) et le dépôt, moins le coût. Sans prix pour l'un de ces objets, rien ; avec un coût incomplet, la valeur seule.
+_Avoid_: bénéfice, marge, profit
+
 ### L'arbre
 
 **Case**:

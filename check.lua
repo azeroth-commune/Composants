@@ -107,6 +107,30 @@ arbre = ns.projetArbre(fer, { bags = true, bank = true, unlearned = true }, { [2
 assert(arbre.caseDe.I2772.apport == 26 and arbre.caseDe.I2772.need == 0 and not fer.apports, "minerai apporté : la case entière")
 print("Composants : cases d'un projet, stock partagé OK")
 
+-- Valeur à l'HV (CONTEXT.md) : les objets du projet au prix le plus bas de l'HV × leur quantité ; ce que ça rapporte = la
+-- valeur, moins la part de l'HV (5 %) et le dépôt 24 h (taux du socle × revente au marchand, compté comme perdu), moins le coût.
+local getItemInfo = C_Item.GetItemInfo
+C_Item.GetItemInfo = function(id) if id == 3575 then return "Barre de fer", nil, nil, nil, nil, nil, nil, nil, nil, nil, 100 end end
+AzerothCommuneDB.deposit = { rate24 = 0.2 }
+arbre = ns.projetArbre(fer, TOUT) -- 30 barres fondues : 30 minerais à 270 = 8 100
+assert(arbre.total == 8100 and not arbre.incomplete, "coût des 30 barres")
+assert(arbre.valeur == 30 * 300, "valeur : 30 barres au prix le plus bas de l'HV")
+-- 9 000 − 5 % = 8 550 ; dépôt 100 × 0,2 × 10 = 200 et × 20 = 400 ; 8 550 − 600 − 8 100 = −150
+assert(arbre.rapporte == -150, "rapporte : " .. tostring(arbre.rapporte))
+-- Coût incomplet (un composant sans prix ni recette) : la valeur seule, rien de rapporté.
+donnees({ hv = { [3575] = market[3575] }, recettes = { [3307] = { name = "Fonte du fer", output = 3575, reagents = { { id = 2772, qty = 1 } } } } })
+local inc = ns.nouveauProjet({ lines = { { id = 3575, qty = 1 } } })
+ns.projetChoix(inc, 3575, "fabriquer") -- décomposée : le minerai n'a ni prix ni recette
+inc = ns.projetArbre(inc, TOUT)
+assert(inc.incomplete and inc.valeur == 300 and inc.rapporte == nil, "coût incomplet : valeur seule")
+-- Un objet du projet sans prix à l'HV : ni valeur, ni rapporté (rien de faux).
+local sans = ns.projetArbre(ns.nouveauProjet({ lines = { { id = 3575, qty = 1 }, { id = 2772, qty = 1 } } }), TOUT)
+assert(sans.valeur == nil and sans.rapporte == nil, "un objet sans prix : rien")
+C_Item.GetItemInfo, AzerothCommuneDB.deposit = getItemInfo, nil
+donnees({ hv = market, recettes = { [3307] = { name = "Fonte du fer", output = 3575, reagents = { { id = 2772, qty = 1 } } } },
+  sacs = { [2772] = 15, [3575] = 4 }, banque = { [2772] = 5 } })
+print("Composants : valeur à l'HV et ce que ça rapporte OK")
+
 -- Les Besoins (CONTEXT.md) : les projets qu'on y a mis, dans l'ordre où on les y a mis, puis le Brouillon, sur UN stock ;
 -- la page d'un projet l'estime comme s'il était seul.
 do

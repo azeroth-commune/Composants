@@ -87,6 +87,33 @@ test("projet de démo : l'arbre et ses blocs, le menu « Projets » passe d'un p
     assertTrue(affiche("Essai : set en thorium enchanté"))
 end) end)
 
+-- Valeur à l'HV (CONTEXT.md) : sur la ligne du projet, ce que valent à l'HV les objets fabriqués ; rien sans leur prix.
+local function ligneProjet()
+    for _, c in ipairs(tous(ComposantsFrame, function() return true end)) do
+        for _, r in ipairs({ c:GetRegions() }) do
+            local t = r:GetObjectType() == "FontString" and r:IsShown() and r:GetText()
+            if t and t:find("^Projet · ") then return t end
+        end
+    end
+end
+test("valeur à l'HV : sur la ligne du projet, seulement quand ses objets ont un prix", function() sansRecettes(function()
+    local avant, h = AzerothCommuneMarket, AzerothCommune.MaisonHV()
+    local ok, err = pcall(function()
+        AzerothCommuneMarket = { [h] = { scanned = "test", items = {} } }
+        SlashCmdList.COMPOSANTS("demo ceinture")
+        local t = ligneProjet()
+        assertNotNil(t, "la ligne du projet")
+        assertNil(t:find("vaut", 1, true), "sans prix : pas de valeur")
+        AzerothCommuneMarket = { [h] = { scanned = "test", items = { [10721] = { min = 150000, qty = 1 }, [4264] = { min = 50000, qty = 1 } } } }
+        Composants.Rafraichir()
+        t = ligneProjet()
+        assertNotNil(t:find("vaut .* à l'HV · "), t)
+        assertTrue(t:find("rapporte", 1, true) ~= nil or t:find("coût incomplet", 1, true) ~= nil, t)
+    end)
+    AzerothCommuneMarket = avant
+    if not ok then error(err, 0) end
+end) end)
+
 -- « + » et « – » : un choix de case du projet affiché, jamais d'un autre projet.
 test("« + » et « – » : le choix de case appartient au projet affiché", function() sansRecettes(function()
     SlashCmdList.COMPOSANTS("demo ceinture")

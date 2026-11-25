@@ -471,7 +471,10 @@ local function refresh()
       local price = H().Commande(o).tip or 0
       header(1, 0, ("Ma part · %s · mon prix %s · travail %s"):format(cost, ns.moneyShort(price), ns.moneySigned(price - total)))
     else
-      header(1, 0, (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost)
+      -- Valeur à l'HV de ce qu'on fabrique, et ce que ça rapporte quand le coût est complet ; rien sans prix.
+      local v = res.valeur and (" · vaut %s à l'HV · %s"):format(ns.moneyShort(res.valeur),
+        res.rapporte and "rapporte " .. ns.moneySigned(res.rapporte) or "|cffe64d4dcoût incomplet|r") or ""
+      header(1, 0, (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost .. v)
     end
     for c = 1, g.cols - 1 do header(c + 1, spacing * c, "Étage " .. c) end
   end

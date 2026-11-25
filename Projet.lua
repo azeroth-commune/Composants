@@ -363,6 +363,24 @@ local function blocs(res, crafters)
   res.blocs, res.blocDe, res.livraisons = groups, byKey, orders
 end
 
+-- Valeur à l'HV (CONTEXT.md) des objets que fabriquent ces lignes : chacun au prix le plus bas de l'HV × sa quantité ; nil
+-- dès qu'un objet n'a pas de prix (ou qu'une fabrication ne produit pas d'objet). Avec le coût complet, ce que ça rapporte :
+-- la valeur moins la part de l'HV (5 %) et le dépôt 24 h (taux mesuré par le socle, 20 % de la revente au marchand sinon,
+-- au moins 1 pc par objet), compté comme perdu, comme le Négoce ; moins le coût.
+-- ponytail: au prix le plus bas, pas 1 pc dessous ni l'écoulement ; le Négoce le fait pour ses lots.
+local PART_HV = 0.05
+local function valeurHV(roots, market, total, incomplete)
+  if #roots == 0 or not market then return nil end
+  local valeur, depot, d = 0, 0, market.depot or {}
+  for _, r in ipairs(roots) do
+    local l = r.id and market.items[r.id]
+    if not (l and l.min) then return nil end
+    valeur = valeur + l.min * r.qty
+    depot = depot + math.max(d.min or 1, math.floor(ns.prixRevente(r.id) * (d.rate24 or 0.20) * r.qty))
+  end
+  return valeur, not incomplete and math.floor(valeur * (1 - PART_HV)) - depot - total or nil
+end
+
 -- L'arbre de plusieurs projets enchaînés (les Besoins) : leurs lignes l'une après l'autre sur UN stock, chaque projet
 -- avec SES choix de case et ses apports (apportsDe[p], facultatif), puis les cases et les blocs. res.roots[i] : la ligne i,
 -- dans l'ordre des projets ; res.projets : les projets.
@@ -378,6 +396,7 @@ function ns.arbreDe(projets, opts, apportsDe)
   end
   local res = cases(roots, #projets == 1 and projets[1].choix or {}) -- n.choix : le choix de case d'un projet seul
   res.roots, res.total, res.incomplete, res.market, res.projets = roots, total, incomplete, market, projets
+  res.valeur, res.rapporte = valeurHV(roots, market, total, incomplete)
   blocs(res, ns.crafters())
   return res
 end
@@ -386,7 +405,7 @@ end
 -- (Handshake y passe la part d'une commande). opts : options de stock et de recettes (celles de la fenêtre par défaut).
 -- apports (facultatif) = { [id] = true }, les cases qu'une commande Handshake apporte : elles sortent de l'arbre, le projet
 -- ne les garde pas.
--- Renvoie { roots, cases, caseDe, liens, blocs, blocDe, livraisons, total, incomplete, market }.
+-- Renvoie { roots, cases, caseDe, liens, blocs, blocDe, livraisons, total, incomplete, market, valeur, rapporte }.
 function ns.projetArbre(p, opts, apports)
   return ns.arbreDe({ p }, opts, apports and { [p] = apports })
 end

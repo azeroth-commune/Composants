@@ -45,7 +45,8 @@ local nomsDeSession = {}
 function ns.items() return lib:Lire("objets") or nomsDeSession end
 
 -- Cours de l'HV (scan du socle, sinon un fournisseur) : { items = { [id] = { min, qty, tiers, … } }, scanned (date du scan
--- du socle), source (le fournisseur) }, ou nil et la raison du socle.
+-- du socle), source (le fournisseur), depot (le dépôt mesuré par le socle : { rate24, min }, ou nil) }, ou nil et la raison
+-- du socle.
 function ns.market()
   local d, lot = lib:Lire("cours de l'HV")
   if not d then return nil, lot end
@@ -56,7 +57,7 @@ function ns.market()
     rawset(t, id, l)
     return l
   end })
-  return { items = items, scanned = h and h.scanned, source = lot and lot.fournisseur }
+  return { items = items, scanned = h and h.scanned, source = lot and lot.fournisseur, depot = d.depot }
 end
 -- L'état des prix de l'HV, pour la barre d'état : d'où ils viennent, ou comment les avoir.
 function ns.texteHV(m)
@@ -64,6 +65,12 @@ function ns.texteHV(m)
   if m and m.scanned then return "HV du " .. m.scanned end
   if m then return "prix de l'HV : " .. (m.source or "?") end
   return "HV jamais scanné : ouvre l'hôtel des ventes"
+end
+
+-- Revente au marchand d'un objet : le catalogue des objets du socle, sinon le jeu (s'il a l'objet en cache), sinon 0.
+function ns.prixRevente(id)
+  local o = lib:Lire("objets")
+  return o and o[id] and o[id].price or select(11, C_Item.GetItemInfo(id)) or 0
 end
 
 -- Un perso du joueur est rangé sous son GUID ; son nom « Prénom Nom » (« ? » si le socle ne le connaît pas) ; son prénom,
