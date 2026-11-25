@@ -416,7 +416,7 @@ local function newCard()
   return c
 end
 
--- Le cran en cours de « Tout fabriquer », image après image (OnUpdate de la case, pendant la fabrication seulement) : les
+-- Le cran en cours de la fabrication lancée, image après image (OnUpdate de la case, pendant la fabrication seulement) : les
 -- fabrications finies et l'incantation du jeu, à la couleur du stock, sur la part « à fabriquer » (Fabriquer.lua).
 local function peindreCran(c)
   local e = ns.fabricationEnCours()
@@ -426,7 +426,7 @@ local function peindreCran(c)
 end
 
 -- Barre : sacs, banque, autres persos, à fabriquer, à acheter (rouge si sans prix). La case de la fabrication en cours
--- (« Tout fabriquer ») : sa barre telle qu'au lancement, la part « à fabriquer » découpée en crans, un par fabrication.
+-- (le bouton d'action) : sa barre telle qu'au lancement, la part « à fabriquer » découpée en crans, un par fabrication.
 -- ponytail: figée au lancement, sinon le stock qui arrive dans les sacs et le compte des fabrications avanceraient deux fois.
 local function bar(c, n)
   local e = ns.fabricationEnCours and ns.fabricationEnCours()

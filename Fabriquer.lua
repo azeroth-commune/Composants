@@ -116,7 +116,7 @@ local function combien(f, n)
   return ("%d × %s"):format(n, f.recette.name or "?")
 end
 
--- Le libellé de « Tout fabriquer » : la prochaine action et son nombre, ou pourquoi rien ; e = la fabrication en cours.
+-- La phrase de la bulle du bouton d'action : la prochaine action et son nombre, ou pourquoi rien ; e = la fabrication en cours.
 function ns.texteToutFabriquer(f, fini, e)
   if e then return ("%s %d/%d…"):format(e.nom, e.fait * e.per, e.n * e.per) end
   if not f then return fini and "Tout est fabriqué" or "Rien à fabriquer" end
@@ -181,7 +181,7 @@ function ns.avancement(e)
   return math.min(1, (e.fait + part) / e.n)
 end
 
--- La fabrication lancée par « Tout fabriquer », nil une fois finie : { id, cle, n fabrications, per objets chacune, fait }.
+-- La fabrication lancée par le bouton d'action, nil une fois finie : { id, cle, n fabrications, per objets chacune, fait }.
 -- La case de son objet en dessine l'avancement (Fenetre.lua, sa barre).
 function ns.fabricationEnCours()
   -- ponytail: fin sans événement (le jeu refuse sans incantation) : 3 s sans fonte ni incantation, la fabrication est finie.
@@ -295,7 +295,7 @@ ev:SetScript("OnEvent", function(_, e, _, _, sort)
     if tf then tf:Hide(); tf:ClearAllPoints(); tf:SetParent(UIParent) end
     return
   end
-  if encours and sort == encours.cle then -- l'avancement de « Tout fabriquer »
+  if encours and sort == encours.cle then -- l'avancement de la fabrication lancée
     if e == "UNIT_SPELLCAST_SUCCEEDED" then
       encours.fait, encours.t = encours.fait + 1, GetTime()
       C_Timer.After(3.5, bientot)
