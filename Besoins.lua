@@ -149,9 +149,9 @@ function ns.orderNeeds(res)
 end
 
 local W, ROW = 420, 28 -- 420 : la place de la bascule « Achat » / « Récolte »
-local LARGE = W - 50 -- largeur d'une ligne, la barre de défilement à droite
-local HAUT_MAX = 520 -- au-delà, la liste défile (retour de Virgile : elle dépassait de l'écran)
-local COLORS = { { 0.35, 0.80, 0.45 }, { 0.35, 0.60, 1.00 }, { 0.66, 0.56, 1.00 } }
+local H = 320 -- taille de départ et minimum : l'en-tête et une huitaine de lignes ; plus, la liste défile, ou on agrandit
+local LARGE = W - 50 -- largeur d'une ligne à la taille de départ, la barre de défilement à droite
+local COLORS = { { 0.35, 0.80, 0.45 }, { 0.35, 0.60, 1.00 }, { 0.64, 0.21, 0.93 } } -- sacs, banque, autres persos
 local READY = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14|t"
 local frame, rows, used = nil, {}, 0
 
@@ -173,7 +173,7 @@ end
 
 local function newRow()
   local r = CreateFrame("Button", nil, frame.contenu)
-  r:SetSize(LARGE, ROW)
+  r:SetHeight(ROW)
   r.icon = r:CreateTexture(nil, "ARTWORK")
   r.icon:SetSize(20, 20)
   r.icon:SetPoint("TOPLEFT", 0, -2)
@@ -187,7 +187,8 @@ local function newRow()
   r.bg = r:CreateTexture(nil, "ARTWORK")
   r.bg:SetColorTexture(1, 1, 1, 0.08)
   r.bg:SetPoint("BOTTOMLEFT", 26, 4)
-  r.bg:SetSize(LARGE - 26, 4)
+  r.bg:SetPoint("BOTTOMRIGHT", 0, 4)
+  r.bg:SetHeight(4)
   r.seg = {}
   for i = 1, 4 do r.seg[i] = r:CreateTexture(nil, "OVERLAY") end
   r:SetScript("OnEnter", function(self)
@@ -195,7 +196,7 @@ local function newRow()
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetItemByID(self.itemID)
     if self.info then GameTooltip:AddLine(self.info, 0.8, 0.8, 0.8, true) end
-    if AuctionHouseFrame and AuctionHouseFrame:IsShown() then GameTooltip:AddLine("Clic : chercher à l'HV", 0.66, 0.56, 1) end
+    if AuctionHouseFrame and AuctionHouseFrame:IsShown() then GameTooltip:AddLine("Clic : chercher à l'HV", 1, 0.82, 0) end
     GameTooltip:Show()
   end)
   r:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -212,10 +213,10 @@ local function newRow()
     GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
     if ns.estRecolte(b:GetParent().itemID) then
       GameTooltip:SetText("Tu le récoltes")
-      GameTooltip:AddLine("Clic : l'acheter (il entre dans la liste d'Auctionator)", 0.66, 0.56, 1)
+      GameTooltip:AddLine("Clic : l'acheter (il entre dans la liste d'Auctionator)", 1, 0.82, 0)
     else
       GameTooltip:SetText("Tu l'achètes")
-      GameTooltip:AddLine("Clic : le récolter (il sort de la liste d'Auctionator)", 0.66, 0.56, 1)
+      GameTooltip:AddLine("Clic : le récolter (il sort de la liste d'Auctionator)", 1, 0.82, 0)
     end
     GameTooltip:Show()
   end)
@@ -230,6 +231,7 @@ local function line(icon, text, count, itemID, info, have, required, missingColo
   rows[used] = r
   r:ClearAllPoints()
   r:SetPoint("TOPLEFT", 14, -frame.y)
+  r:SetWidth(frame.large)
   r.icon:SetTexture(icon)
   r.icon:SetShown(icon ~= nil)
   r.text:SetText(text)
@@ -238,7 +240,7 @@ local function line(icon, text, count, itemID, info, have, required, missingColo
   r.mode:Hide()
   r.count:ClearAllPoints(); r.count:SetPoint("TOPRIGHT", 0, -4)
   r.text:SetPoint("RIGHT", -90, 0)
-  local left, wmax = 26, LARGE - 26
+  local left, wmax = 26, frame.large - 26
   local parts = have and { have[1], have[2], have[3], math.max(0, required - have[1] - have[2] - have[3]) } or {}
   r.bg:SetShown(have ~= nil)
   for i = 1, 4 do
@@ -275,6 +277,7 @@ local function title(text)
   rows[used] = r
   r:ClearAllPoints()
   r:SetPoint("TOPLEFT", 14, -frame.y)
+  r:SetWidth(frame.large)
   r.icon:Hide(); r.bg:Hide()
   for i = 1, 4 do r.seg[i]:Hide() end
   r.text:SetText("|cffffd100" .. text .. "|r")
@@ -290,7 +293,7 @@ end
 local function ouTrouver(r)
   local t = {}
   if r.have[2] > 0 then t[#t + 1] = ("|cff5999ffbanque %d|r"):format(r.have[2]) end
-  if r.have[3] > 0 then t[#t + 1] = ("|cffa98fffautres persos %d|r"):format(r.have[3]) end
+  if r.have[3] > 0 then t[#t + 1] = ("|cffa335eeautres persos %d|r"):format(r.have[3]) end
   return #t > 0 and table.concat(t, " · ") or nil
 end
 
@@ -308,7 +311,10 @@ function ns.refreshNeeds()
   end
   local list, recipes = ns.orderNeeds(res)
   used, frame.y = 0, 0
-  frame.head:SetText("Besoins · " .. (p.name or "?"))
+  -- Une ligne prend la largeur du défilement : agrandie, la fenêtre élargit les noms et les barres.
+  frame.large = math.max(LARGE, math.floor(frame.scroll:GetWidth() - 14))
+  frame.contenu:SetWidth(frame.large + 14)
+  frame.title:SetText("Besoins · " .. (p.name or "?"))
   frame.syncFil()
 
   title("Dans tes sacs")
@@ -338,7 +344,7 @@ function ns.refreshNeeds()
   -- L'emplacement des Besoins : une zone de la largeur d'une ligne, sous elles ; le fournisseur y dessine et rend la hauteur.
   frame.zone:ClearAllPoints()
   frame.zone:SetPoint("TOPLEFT", 14, -(frame.y + 6))
-  frame.zone:SetHeight(1)
+  frame.zone:SetSize(frame.large, 1)
   frame.zone:Show()
   local h = tonumber((ns.demander(p, "besoins", frame.zone, p))) or 0
   frame.zone:SetShown(h > 0)
@@ -358,25 +364,19 @@ function ns.refreshNeeds()
   if buy > 0 then foot = foot .. " · à acheter : " .. ns.moneyShort(buy) end
   frame.foot:SetText(foot)
   frame.contenu:SetHeight(math.max(1, frame.y))
-  frame:SetHeight(math.min(frame.y + 108, HAUT_MAX))
 end
 
 local function build()
-  frame = ns.newWindow("ComposantsBesoinsFrame", "Besoins", W, 200)
-  frame:ClearAllPoints()
-  frame:SetPoint("TOPRIGHT", -60, -160) -- à côté, pas par-dessus la fenêtre des projets
-  frame.title:SetText("")
-  frame.head = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  frame.head:SetPoint("TOPLEFT", 14, -12)
-  frame.syncFil = ns.fil(frame, 14, -38) -- le fil (Fenetre.lua), sous le nom du projet
-  frame.head:SetPoint("RIGHT", -60, 0)
-  frame.head:SetJustifyH("LEFT")
-  frame.head:SetWordWrap(false)
+  -- Redimensionnable (le socle retient place et taille) ; le titre du gabarit dit « Besoins · <projet> ». À côté, pas
+  -- par-dessus la fenêtre des projets, tant que le joueur ne l'a pas placée.
+  frame = ns.newWindow("ComposantsBesoinsFrame", "Besoins", W, H, { place = { "TOPRIGHT", UIParent, "TOPRIGHT", -60, -160 } })
+  frame.large = LARGE
+  frame.syncFil = ns.fil(frame, 14, -30) -- le fil (Fenetre.lua), sous la barre de titre
   frame.foot = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   frame.foot:SetPoint("BOTTOMLEFT", 14, 14)
-  -- La liste défile au-delà de HAUT_MAX (molette ou barre).
+  -- La liste défile (molette ou barre) ; elle suit la fenêtre, le pied et la poignée en dessous.
   frame.scroll = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
-  frame.scroll:SetPoint("TOPLEFT", 0, -68)
+  frame.scroll:SetPoint("TOPLEFT", 0, -58)
   frame.scroll:SetPoint("BOTTOMRIGHT", -28, 34)
   frame.contenu = CreateFrame("Frame", nil, frame.scroll)
   frame.contenu:SetSize(LARGE + 14, 1)
@@ -384,14 +384,17 @@ local function build()
   frame.zone = CreateFrame("Frame", nil, frame.contenu) -- l'emplacement des Besoins (API.lua)
   frame.zone:SetWidth(LARGE)
   frame.zone.emplacement = true
+  -- Les sacs changent (au plus une fois par seconde), la fenêtre est agrandie (les lignes suivent sa largeur) : on redessine.
   local pending
-  frame:RegisterEvent("BAG_UPDATE_DELAYED")
-  frame:SetScript("OnEvent", function()
+  local function bientot(delai)
     if pending or not frame:IsShown() then return end
     pending = true
-    C_Timer.After(1, function() pending = false; ns.refreshNeeds() end)
-  end)
-  frame:SetScript("OnShow", function() ns.refreshNeeds() end)
+    C_Timer.After(delai, function() pending = false; ns.refreshNeeds() end)
+  end
+  frame:RegisterEvent("BAG_UPDATE_DELAYED")
+  frame:SetScript("OnEvent", function() bientot(1) end)
+  frame:HookScript("OnSizeChanged", function() bientot(0.1) end)
+  frame:HookScript("OnShow", function() ns.refreshNeeds() end) -- (Hook : le socle y fait passer la fenêtre devant)
 end
 
 -- La fenêtre des Besoins (faite au premier appel) ; ns.montrerVue (Fenetre.lua) la montre ou la cache.

@@ -25,7 +25,7 @@ _Avoid_: craft, ligne forcée
 **Prochaine fabrication** (d'un projet):
 Ce qu'il faut fabriquer maintenant : dans l'ordre de l'arbre, du bas vers le haut (les barres avant l'armure), la première
 fabrication que les composants des sacs permettent, faite d'un coup dans la fenêtre de son métier. En phase Fabriquer, elle
-est cerclée de lavande dans l'arbre et nommée par le seul bouton d'action, en bas (« Silex à aiguiser ×7 ») : clic = une, clic
+est cerclée d'or dans l'arbre et nommée par le seul bouton d'action, en bas (« Silex à aiguiser ×7 ») : clic = une, clic
 droit = tout ce que les sacs permettent, puis on passe à la suivante ; sans la fenêtre du bon métier, le bouton le dit
 (« Ouvre Forge »). C'est le seul endroit où l'on fabrique (plus de bouton sous la fenêtre de métier ni de panneau de Maîtrise).
 Jamais deux recettes sur un clic.

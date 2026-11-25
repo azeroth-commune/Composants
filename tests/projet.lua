@@ -56,12 +56,7 @@ local function choisir(nom, entree)
     error("pas d'entrée « " .. entree .. " » au clic droit sur « " .. nom .. " »", 2)
 end
 -- Le nom du projet affiché en haut de la fenêtre.
-local function affiche(nom)
-    for _, r in ipairs({ ComposantsFrame:GetRegions() }) do
-        if r.GetText and r:IsShown() and r:GetText() == nom then return true end
-    end
-    return false
-end
+local function affiche(nom) return ComposantsFrame.title:GetText() == nom end -- le titre du gabarit
 -- Les cases dessinées : une par objet (c.node).
 local function cases() return tous(ComposantsFrame, function(c) return c.node ~= nil and c:IsShown() end) end
 local function projet() return ComposantsDB.projets[ComposantsDB.courant] end
@@ -71,7 +66,7 @@ local function fil(f, nom)
         return c:GetObjectType() == "Button" and c:IsVisible() and ((c:GetText() or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) == nom
     end)[1]
 end
-local function enCours(b) return (b:GetText() or ""):find("|cffa98fff", 1, true) ~= nil end -- lavande
+local function enCours(b) return (b:GetText() or ""):find("|cffffd100", 1, true) ~= nil end -- doré
 
 -- Personne n'a de recette ici : « recettes pas apprises » cochée, toutes comptent et les blocs se dessinent. L'option est
 -- rendue telle quelle, même si une vérification échoue.
@@ -252,7 +247,7 @@ test("Lancer : la petite vue au coin de la grande, le fil, les Besoins du seul p
     assertTrue(ComposantsBesoinsFrame:IsShown() and not ComposantsFrame:IsShown(), "une seule vue : la petite")
     assertEquals(math.floor(x + 0.5), math.floor(ComposantsBesoinsFrame:GetLeft() + 0.5), "au coin de la grande")
     assertEquals(math.floor(y + 0.5), math.floor(ComposantsBesoinsFrame:GetTop() + 0.5))
-    assertTrue(ComposantsBesoinsFrame.head:GetText():find(a.name, 1, true) ~= nil, "le projet affiché, nommé")
+    assertTrue(ComposantsBesoinsFrame.title:GetText():find(a.name, 1, true) ~= nil, "le projet affiché, nommé")
     assertTrue(enCours(fil(ComposantsBesoinsFrame, "Réunir")), "le fil de la petite vue : Réunir")
     assertTrue(not enCours(fil(ComposantsBesoinsFrame, "Préparer")))
     local deA = lignesBesoins()
@@ -264,7 +259,7 @@ test("Lancer : la petite vue au coin de la grande, le fil, les Besoins du seul p
     SlashCmdList.COMPOSANTS("demo ceinture")
     local b = projet()
     bouton("Lancer"):Click()
-    assertTrue(ComposantsBesoinsFrame.head:GetText():find(b.name, 1, true) ~= nil)
+    assertTrue(ComposantsBesoinsFrame.title:GetText():find(b.name, 1, true) ~= nil)
     local cb, horsB = casesDe(b), false
     for id, l in pairs(lignesBesoins()) do
         if not (l.info or ""):find("^Pour fabriquer") then assertTrue(cb[id], "une ligne d'un autre projet : " .. id) end
@@ -563,13 +558,40 @@ test("la barre de recherche propose les objets de la recherche du socle", functi
 end) end)
 
 -- Les Besoins défilent : une longue liste ne fait pas dépasser la fenêtre (retour de Virgile).
-test("Besoins : la fenêtre plafonne sa hauteur et la liste défile", function() sansRecettes(function()
+test("Besoins : sa taille ne suit pas la liste, qui défile ; agrandie, des lignes plus larges", function() sansRecettes(function()
     SlashCmdList.COMPOSANTS("demo set")
     local p = projet()
     for id = 2840, 2880 do Composants.Ajouter(p, id, 3) end -- une quarantaine de lignes de plus
     bouton("Lancer"):Click()
-    assertTrue(ComposantsBesoinsFrame:GetHeight() <= 520, "hauteur plafonnée : " .. ComposantsBesoinsFrame:GetHeight())
-    local n = 0
-    for _ in pairs(lignesBesoins()) do n = n + 1 end
+    local f = ComposantsBesoinsFrame
+    local h = f:GetHeight()
+    assertTrue(h < 600, "la fenêtre ne grandit pas avec la liste : " .. h)
+    assertTrue(f.contenu:GetHeight() > f.scroll:GetHeight(), "la liste défile")
+    local n, l = 0, nil
+    for _, r in pairs(lignesBesoins()) do n, l = n + 1, r end
     assertTrue(n > 15, "beaucoup de lignes : " .. n)
+    assertTrue(f:IsResizable() and f.ResizeButton ~= nil, "redimensionnable, la poignée du socle")
+    local w = l:GetWidth()
+    f:SetSize(f:GetWidth() + 200, h + 100)
+    Composants.Rafraichir() -- (en jeu, OnSizeChanged le fait un dixième de seconde plus tard)
+    assertTrue(l:GetWidth() >= w + 150, ("une ligne suit la largeur : %d → %d"):format(w, l:GetWidth()))
+    f:SetSize(f:GetWidth() - 200, h)
+end) end)
+
+test("la grande vue agrandie : l'arbre s'étale sur la largeur gagnée ; le titre du gabarit, la colonne sous lui", function() sansRecettes(function()
+    SlashCmdList.COMPOSANTS("demo set")
+    local f = ComposantsFrame
+    assertTrue(affiche("Essai : set en thorium enchanté"), "le nom du projet dans le titre du gabarit")
+    local function droite() -- le bord droit de la case la plus à droite, en pixels de l'écran, depuis le bord gauche de la fenêtre
+        local m = 0
+        for _, c in ipairs(cases()) do m = math.max(m, c:GetRight() * c:GetEffectiveScale()) end
+        return m - f:GetLeft() * f:GetEffectiveScale()
+    end
+    local avant, w, h = droite(), f:GetWidth(), f:GetHeight()
+    f:SetSize(w + 300, h + 100)
+    Composants.Rafraichir() -- (en jeu, OnSizeChanged le fait un dixième de seconde plus tard)
+    local apres = droite()
+    f:SetSize(w, h)
+    Composants.Rafraichir()
+    assertTrue(apres > avant + 200, ("l'arbre s'étale : %d → %d"):format(avant, apres))
 end) end)

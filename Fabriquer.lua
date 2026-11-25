@@ -1,5 +1,5 @@
 -- Composants, la prochaine fabrication du projet affiché (CONTEXT.md) : en phase Fabriquer, le seul bouton d'action de la
--- grande vue, en bas, la nomme (« Silex à aiguiser ×7 ») et sa case est cerclée de lavande dans l'arbre. Clic = une
+-- grande vue, en bas, la nomme (« Silex à aiguiser ×7 ») et sa case est cerclée d'or dans l'arbre. Clic = une
 -- fabrication, clic droit = tout ce que les sacs permettent (le jeu enchaîne lui-même, comme son « Créer tout ») ; sans la
 -- fenêtre du bon métier, « Ouvre Forge » (un bouton sécurisé dont la macro lance le métier). Le compte avance comme dans
 -- l'arbre : l'objet fabriqué arrive dans les sacs et l'arbre le déduit. C'est le seul endroit où l'on fabrique (plus de
@@ -151,7 +151,7 @@ end
 
 ---------------------------------------------------------------------------------------------------
 -- Le bouton d'action en Fabriquer (frame.action de Fenetre.lua, en bas de la grande vue) : guider sans réfléchir, quoi
--- fabriquer, combien, dans quelle fenêtre ; la case de la prochaine fabrication cerclée de lavande. Pendant une
+-- fabriquer, combien, dans quelle fenêtre ; la case de la prochaine fabrication cerclée d'or. Pendant une
 -- fabrication, le bouton compte (« Barre de bronze 2/4… », grisé) et ne prend pas de second clic, la barre de la case
 -- avance cran par cran (Fenetre.lua) ; finie, il passe tout seul à la suivante. La fenêtre du métier fermée :
 -- « Ouvre <métier> », car l'ouvrir est une action protégée (CastSpell) : c'est un bouton sécurisé dont la macro lance le
@@ -160,7 +160,7 @@ end
 local tf, tfF, encours
 local function enCombat() return InCombatLockdown and InCombatLockdown() end
 local function enIncantation() return UnitCastingInfo and UnitCastingInfo("player") ~= nil end
-local LAVANDE = { 0.66, 0.56, 1.00 }
+local OR = { 1.00, 0.82, 0.00 } -- le doré des textes du jeu
 
 -- La part « à fabriquer » de la barre de la case en crans, un par fabrication. ponytail: au-delà de 20, sur les 142 px de
 -- la barre, les séparations ne se lisent plus (moins de 7 px par cran) : une barre continue.
@@ -212,7 +212,7 @@ local function construireTout(parent) -- hors combat seulement : un bouton sécu
   tf:SetScript("OnEnter", function(self)
     if not tfF then return end
     GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
-    GameTooltip:AddLine("Prochaine fabrication du projet", LAVANDE[1], LAVANDE[2], LAVANDE[3])
+    GameTooltip:AddLine("Prochaine fabrication du projet", OR[1], OR[2], OR[3])
     GameTooltip:AddLine(ns.texteToutFabriquer(tfF, nil, encours), 1, 1, 1, true)
     if tfF.etat == "ouvrir" and not encours then GameTooltip:AddLine("Clic : ouvre la fenêtre du métier", 0.6, 0.6, 0.6, true)
     elseif tfF.etat == "pret" and not encours then
@@ -224,7 +224,7 @@ local function construireTout(parent) -- hors combat seulement : un bouton sécu
   tf:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
--- Le cercle lavande sur la case de la prochaine fabrication (gris si rien n'est possible) : ses textures à elle, dans le
+-- Le cercle doré sur la case de la prochaine fabrication (gris si rien n'est possible) : ses textures à elle, dans le
 -- dessin ; une seule case cerclée à la fois.
 local cerclee
 local function cercler(c, k, a)
@@ -273,7 +273,7 @@ function ns.rafraichirToutFabriquer(carteDe)
   tf:SetPoint("BOTTOMRIGHT", fenetre.action)
   tf:SetSize(math.min(340, math.max(140, tf:GetTextWidth() + 30)), 24)
   tf:Show()
-  if case then cercler(case, actif and LAVANDE or { 0.6, 0.6, 0.62 }, actif and 0.95 or 0.5) else cercler(nil) end
+  if case then cercler(case, actif and OR or { 0.6, 0.6, 0.62 }, actif and 0.95 or 0.5) else cercler(nil) end
 end
 
 -- Fenêtre de métier ouverte ou mise à jour, sacs changés (une fabrication finie), projet changé : au plus une fois par

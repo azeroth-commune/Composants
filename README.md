@@ -29,7 +29,7 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
   une ligne ou un choix de case remet le projet en Préparer.
 - **Fabriquer** : l'arbre en lecture seule (ni « + », ni quantités, ni choix de case : « Préparer » dans le fil pour
   changer) ; le bouton d'action nomme la prochaine fabrication du projet affiché (« Barre d'étain ×4 », du bas de l'arbre
-  vers le haut), sa case cerclée de lavande. Clic : une fabrication ; clic droit : tout ce que les sacs permettent ;
+  vers le haut), sa case cerclée d'or. Clic : une fabrication ; clic droit : tout ce que les sacs permettent ;
   « Barre d'étain 2/4… » pendant (grisé, pas de second clic), puis la suivante d'elle-même. Sans la fenêtre du bon métier :
   « Ouvre Minage » (bouton sécurisé : la macro ouvre le métier) ; rien de possible : « Il manque … » ou « Recette
   inconnue : … », grisé, la phrase entière dans la bulle. C'est le seul endroit où l'on fabrique (plus de bouton sous la

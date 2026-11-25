@@ -1,6 +1,6 @@
 -- Composants, la fenêtre (/composants) : la grande vue d'un projet, celle de ses phases Préparer, Fabriquer et Fini (la petite,
 -- Réunir, est dans Besoins.lua ; une seule des deux visible, ns.montrerVue) ; le fil « Préparer › Réunir › Fabriquer » en
--- haut des deux. À gauche, la colonne des projets (le Brouillon en tête) ; à droite, le nom du projet et le fil, la ligne
+-- haut des deux. À gauche, la colonne des projets (le Brouillon en tête) ; le nom du projet en titre ; à droite, le fil, la ligne
 -- d'ajout (Préparer seulement), son arbre par étages, et en bas un seul bouton d'action, qui suit la phase : « Lancer »,
 -- la prochaine fabrication (Fabriquer.lua), « Clore ». En Fabriquer et Fini, l'arbre est en lecture seule. L'emplacement du
 -- bloc (Composants.Emplacements, API.lua) : un autre add-on dessine dans chaque bloc et sur la ligne du projet, et un bloc
@@ -16,14 +16,15 @@ local _, ns = ...
 
 local W, H_FEN = 1000, 690
 local COL_W, X0 = 180, 200 -- la colonne des projets, et le bord gauche de ce qui est à sa droite
+local TOP_CONTENU = 30 -- le contenu commence sous la barre de titre du gabarit
 local NODE_W, NODE_H, GAP, TOP = 190, 42, 18, 36 -- l'écart et le haut laissent la place au nom des artisans
 local RELAY = 14 -- place réservée à un lien qui traverse un étage
 local BAND_GAP = 30 -- entre les rectangles de deux artisans (la place de leur nom)
 local MARGIN = 10   -- à gauche et à droite : le rectangle d'un artisan dépasse ses cases de 6
 local STEP = NODE_H + GAP
 local COLORS = {
-  { 0.35, 0.80, 0.45 }, { 0.35, 0.60, 1.00 }, { 0.66, 0.56, 1.00 }, -- sacs, banque, autres persos
-  fabriquer = { 0.95, 0.65, 0.25 }, buy = { 0.60, 0.60, 0.62 }, none = { 0.90, 0.30, 0.30 }, target = { 0.66, 0.56, 1.00 },
+  { 0.35, 0.80, 0.45 }, { 0.35, 0.60, 1.00 }, { 0.64, 0.21, 0.93 }, -- sacs, banque, autres persos (le violet épique du jeu)
+  fabriquer = { 0.95, 0.65, 0.25 }, buy = { 0.60, 0.60, 0.62 }, none = { 0.90, 0.30, 0.30 }, target = { 1.00, 0.82, 0.00 },
   apport = { 0.30, 0.80, 0.85 },
 }
 
@@ -102,16 +103,14 @@ local function applyView()
   content:SetPoint("TOPLEFT", scroll, "TOPLEFT", view.x, view.y) -- décalage dans l'échelle du dessin
 end
 -- Couleur de chaque artisan, dans l'ordre de la liste (ton perso d'abord) ; rouge = personne ne sait le faire.
-local CRAFTER_COLORS = { { 0.66, 0.56, 1.00 }, { 0.30, 0.80, 0.85 }, { 0.95, 0.65, 0.25 }, { 0.95, 0.45, 0.75 }, { 0.45, 0.85, 0.58 } }
+local CRAFTER_COLORS = { { 1.00, 0.82, 0.00 }, { 0.30, 0.80, 0.85 }, { 0.95, 0.65, 0.25 }, { 0.95, 0.45, 0.75 }, { 0.45, 0.85, 0.58 } }
 local boxes = {}
 -- Étiquettes des livraisons entre artisans : survol = la liste.
 local orderTags = {}
 local function bandName(b) return b == "reste" and "toi" or tostring(b) end
 local function newOrderTag()
-  local t = CreateFrame("Button", nil, content, "BackdropTemplate")
+  local t = CreateFrame("Button", nil, content, "TooltipBackdropTemplate") -- le fond des bulles du jeu, bord à la couleur du métier
   t:SetFrameLevel(content:GetFrameLevel() + 5)
-  t:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-  t:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
   t.text = t:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   t.text:SetPoint("CENTER")
   t:SetScript("OnEnter", function(self)
@@ -130,14 +129,11 @@ local cards, lines, labels = {}, {}, {}
 -- (haute de 16, sur une ligne de titre ; le fournisseur règle sa largeur) ou une case (à la place d'un bloc confié) :
 -- jamais la même zone pour les deux.
 local function newZone(case, parent)
-  local z = CreateFrame("Frame", nil, parent or content, case and "BackdropTemplate" or nil)
+  local z = CreateFrame("Frame", nil, parent or content, case and "InsetFrameTemplate" or nil) -- une case : le fond en retrait d'une case
   z:SetFrameLevel(content:GetFrameLevel() + 5)
   z.emplacement = true
   if case then
     z:SetSize(NODE_W, NODE_H)
-    z:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-    z:SetBackdropColor(0.11, 0.11, 0.14, 0.95)
-    z:SetBackdropBorderColor(0.66, 0.56, 1.00, 0.5)
   else
     z:SetSize(1, 16)
   end
@@ -153,7 +149,7 @@ local function lectureSeule() return ns.phase(projet()) ~= "preparer" end
 
 ---------------------------------------------------------------------------------------------------
 -- Le fil (CONTEXT.md, Phase) « Préparer › Réunir › Fabriquer », en haut des deux vues : la phase du projet affiché se lit
--- sur son bouton (lavande, surligné ; les autres en gris) ; clic = aller à cette phase (le Brouillon : lancé d'abord) et
+-- sur son bouton (doré, surligné ; les autres en gris) ; clic = aller à cette phase (le Brouillon : lancé d'abord) et
 -- montrer sa vue. Fini : aucun surligné, la grande vue dit « Tout est fabriqué ». ns.fil(parent, x, y) le pose et rend la
 -- fonction qui le met à jour.
 local PHASES = {
@@ -181,7 +177,7 @@ function ns.fil(parent, x, y)
       GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
       GameTooltip:AddLine(ph[2])
       GameTooltip:AddLine(ph[3], 1, 1, 1, true)
-      if ns.phase(projet()) ~= ph[1] then GameTooltip:AddLine("Clic : y aller", 0.66, 0.56, 1) end
+      if ns.phase(projet()) ~= ph[1] then GameTooltip:AddLine("Clic : y aller", 1, 0.82, 0) end
       GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -190,7 +186,7 @@ function ns.fil(parent, x, y)
   return function()
     local en = ns.phase(projet())
     for i, ph in ipairs(PHASES) do
-      if ph[1] == en then bs[i]:SetText("|cffa98fff" .. ph[2] .. "|r"); bs[i]:LockHighlight()
+      if ph[1] == en then bs[i]:SetText("|cffffd100" .. ph[2] .. "|r"); bs[i]:LockHighlight()
       else bs[i]:SetText("|cffbbbbbb" .. ph[2] .. "|r"); bs[i]:UnlockHighlight() end
     end
   end
@@ -422,12 +418,11 @@ local function toggleOf(n)
 end
 
 local function newCard()
-  local c = CreateFrame("Button", nil, content, "BackdropTemplate")
+  -- Une case : le fond en retrait du jeu, le surlignage du jeu au survol, et tenu sur une case choisie à la main (n.choix).
+  local c = CreateFrame("Button", nil, content, "InsetFrameTemplate")
   c:SetFrameLevel(content:GetFrameLevel() + 3) -- au-dessus des cadres d'artisans
   c:SetSize(NODE_W, NODE_H)
-  c:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-  c:SetBackdropColor(0.11, 0.11, 0.14, 0.95)
-  c:SetBackdropBorderColor(1, 1, 1, 0.08)
+  c:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
   c:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   c.accent = c:CreateTexture(nil, "ARTWORK")
   c.accent:SetPoint("TOPLEFT", 1, -1)
@@ -470,7 +465,7 @@ local function newCard()
     local n = c.node
     if n and n.kind == "target" then setQty(math.max(1, n.qty + d * (IsShiftKeyDown() and 10 or 1))) end
   end)
-  c.toggle = c:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  c.toggle = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge") -- doré : ton choix
   c.toggle:SetPoint("TOPRIGHT", -6, -2)
   c.barBg = c:CreateTexture(nil, "ARTWORK")
   c.barBg:SetColorTexture(1, 1, 1, 0.08)
@@ -481,7 +476,6 @@ local function newCard()
   c:SetScript("OnEnter", function(self)
     local n = self.node
     if not n then return end
-    self:SetBackdropBorderColor(0.66, 0.56, 1.00, 0.6)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetItemByID(n.id)
     GameTooltip:AddLine(" ")
@@ -489,7 +483,7 @@ local function newCard()
     if stocked(n) > 0 then GameTooltip:AddLine(("En stock : %d sacs, %d banque, %d autres persos"):format(n.have[1], n.have[2], n.have[3]), 0.35, 0.8, 0.45) end
     if n.made > 0 then
       GameTooltip:AddLine(("À fabriquer : %d — %s ×%d, %s"):format(n.made, n.recipe and n.recipe.name or "?", n.crafts, ns.money(n.madeCost)), 0.95, 0.65, 0.25)
-      if n.who then GameTooltip:AddLine(("Par %s%s"):format(n.who, n.whoKnows and "" or " (a le métier, recette à apprendre)"), 0.66, 0.56, 1)
+      if n.who then GameTooltip:AddLine(("Par %s%s"):format(n.who, n.whoKnows and "" or " (a le métier, recette à apprendre)"), 1, 0.82, 0)
       elseif n.who == false then GameTooltip:AddLine("Personne de ta liste n'a ce métier", 0.9, 0.3, 0.3) end
       if n.unknown then GameTooltip:AddLine("Recette pas encore apprise", 0.9, 0.3, 0.3)
       elseif type(n.recipeKey) == "number" then GameTooltip:AddLine("Maj+clic : ouvrir la recette dans la fenêtre de métier", 0.6, 0.6, 0.6) end
@@ -502,7 +496,7 @@ local function newCard()
     if n.incomplete then GameTooltip:AddLine("Coût incomplet : un composant n'a ni prix ni recette (en rouge)", 0.9, 0.3, 0.3) end
     if n.partial then GameTooltip:AddLine("Pas assez en vente à l'HV : le reste est compté au dernier prix vu", 0.9, 0.6, 0.3) end
     local t = not lectureSeule() and toggleOf(n)
-    if t == "reset" then GameTooltip:AddLine("Choix forcé à la main — clic : revenir au calcul des prix", 0.66, 0.56, 1)
+    if t == "reset" then GameTooltip:AddLine("Choix forcé à la main — clic : revenir au calcul des prix", 1, 0.82, 0)
     elseif t == "acheter" then GameTooltip:AddLine("Clic : l'acheter tout fait au lieu de le fabriquer", 0.6, 0.6, 0.6)
     elseif t == "fabriquer" then
       GameTooltip:AddLine(n.need == 0 and "Clic : le fabriquer au lieu de prendre ton stock" or "Clic : le décomposer (fabriquer) même si c'est plus cher", 0.6, 0.6, 0.6)
@@ -511,7 +505,7 @@ local function newCard()
     if n.kind == "target" and lignes() and not lectureSeule() then GameTooltip:AddLine("Clic droit : ne plus suivre", 0.6, 0.6, 0.6) end
     GameTooltip:Show()
   end)
-  c:SetScript("OnLeave", function(self) self:SetBackdropBorderColor(1, 1, 1, 0.08); GameTooltip:Hide() end)
+  c:SetScript("OnLeave", function() GameTooltip:Hide() end)
   c:SetScript("OnClick", function(self, button)
     local n = self.node
     if IsShiftKeyDown() and button ~= "RightButton" then return openRecipe(n) end
@@ -713,7 +707,8 @@ local function refresh()
     c.sub:SetPoint("TOPLEFT", target and 80 or 40, -20)
     local t = toggleOf(n)
     local sign = lectureSeule() and "" or (n.made > 0 and "–") or (t and "+") or ""
-    c.toggle:SetText(n.choix and ("|cffa98fff" .. sign .. "|r") or sign)
+    c.toggle:SetText(n.choix and ("|cffffd100" .. sign .. "|r") or sign)
+    if n.choix then c:LockHighlight() else c:UnlockHighlight() end
     bar(c, n)
   end
   for i = #g.nodes + 1, #cards do cards[i]:Hide() end
@@ -757,7 +752,7 @@ local function refresh()
         GameTooltip:AddLine(" ")
         if #grp.crafters == 0 then GameTooltip:AddLine("Personne de ta liste n'a ce métier", 0.9, 0.3, 0.3) end
         for _, c in ipairs(grp.crafters) do
-          GameTooltip:AddLine(("%s : niveau %d, %d recette%s sur %d"):format(c.name, c.rank, c.known, c.known > 1 and "s" or "", #grp.recipes), 0.66, 0.56, 1)
+          GameTooltip:AddLine(("%s : niveau %d, %d recette%s sur %d"):format(c.name, c.rank, c.known, c.known > 1 and "s" or "", #grp.recipes), 1, 0.82, 0)
         end
         GameTooltip:Show()
       end)
@@ -869,7 +864,7 @@ local function refresh()
   frame.status:SetPoint("RIGHT", action, "LEFT", -12, 0)
 
   frame.status:SetText(ns.texteHV(market) .. (lectureSeule() and " · lecture seule : « Préparer » dans le fil pour changer"
-    or " · « + » décompose, « – » achète tout fait (violet : ton choix)") .. " · molette : zoom, glisser : déplacer")
+    or " · « + » décompose, « – » achète tout fait (surligné : ton choix)") .. " · molette : zoom, glisser : déplacer")
 end
 ns.refreshCraftWindow = refresh
 
@@ -927,14 +922,10 @@ end
 local PHASE_NOM = { preparer = "Préparer", reunir = "Réunir", fabriquer = "Fabriquer", fini = "|cff59cc73Fini|r" }
 local ENTREE_H = 34
 local function colonne(parent)
-  local W8 = "Interface\\Buttons\\WHITE8x8"
-  local col = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-  col:SetPoint("TOPLEFT", 8, -8)
-  col:SetPoint("BOTTOMLEFT", 8, 8)
+  local col = CreateFrame("Frame", nil, parent, "InsetFrameTemplate") -- le fond en retrait du jeu, sous la barre de titre
+  col:SetPoint("TOPLEFT", 10, -TOP_CONTENU)
+  col:SetPoint("BOTTOMLEFT", 10, 10)
   col:SetWidth(COL_W)
-  col:SetBackdrop({ bgFile = W8, edgeFile = W8, edgeSize = 1 })
-  col:SetBackdropColor(1, 1, 1, 0.03)
-  col:SetBackdropBorderColor(0.66, 0.56, 1.00, 0.15)
   local sc = CreateFrame("ScrollFrame", nil, col, "UIPanelScrollFrameTemplate")
   sc:SetPoint("TOPLEFT", 4, -4)
   sc:SetPoint("BOTTOMRIGHT", -24, 4)
@@ -980,13 +971,16 @@ local function colonne(parent)
     local b = CreateFrame("Button", nil, liste)
     b:SetSize(COL_W - 28, ENTREE_H - 2)
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    -- Celui affiché : le surlignage du jeu, tenu, et un trait doré à gauche ; le survol, le même surlignage.
     b.fond = b:CreateTexture(nil, "BACKGROUND")
     b.fond:SetAllPoints()
-    b.trait = b:CreateTexture(nil, "ARTWORK") -- celui affiché : un trait lavande à gauche
+    b.fond:SetTexture("Interface\\QuestFrame\\UI-QuestLogTitleHighlight")
+    b.fond:SetBlendMode("ADD")
+    b.fond:SetVertexColor(1, 0.82, 0, 0.5)
+    b.trait = b:CreateTexture(nil, "ARTWORK")
     b.trait:SetPoint("TOPLEFT"); b.trait:SetPoint("BOTTOMLEFT"); b.trait:SetWidth(2)
-    b.trait:SetColorTexture(0.66, 0.56, 1.00, 0.9)
-    local hl = b:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints(); hl:SetColorTexture(1, 1, 1, 0.06)
+    b.trait:SetColorTexture(1, 0.82, 0, 0.9)
+    b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     b.nom = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     b.nom:SetPoint("TOPLEFT", 8, -4); b.nom:SetPoint("RIGHT", -4, 0)
     b.nom:SetJustifyH("LEFT"); b.nom:SetWordWrap(false)
@@ -1001,7 +995,7 @@ local function colonne(parent)
     b:SetScript("OnEnter", function(self)
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:AddLine(self.nom:GetText())
-      if self.p.tenu then GameTooltip:AddLine(self.p.tenu, 0.66, 0.56, 1, true) end
+      if self.p.tenu then GameTooltip:AddLine(self.p.tenu, 1, 0.82, 0, true) end
       GameTooltip:AddLine("Clic : l'ouvrir", 0.6, 0.6, 0.6)
       GameTooltip:AddLine(ns.estBrouillon(self.p) and "Clic droit : le vider" or "Clic droit : Renommer, Supprimer", 0.6, 0.6, 0.6)
       GameTooltip:Show()
@@ -1024,7 +1018,7 @@ local function colonne(parent)
       b.nom:SetText(brouillon and "Brouillon" or (p.name or "?"))
       local n = #p.lines
       b.phase:SetText(brouillon and (n == 0 and "vide" or (n .. (n > 1 and " lignes" or " ligne"))) or PHASE_NOM[ns.phase(p)])
-      b.fond:SetColorTexture(0.66, 0.56, 1.00, p == cur and 0.16 or 0)
+      b.fond:SetShown(p == cur)
       b.trait:SetShown(p == cur)
       b:Show()
     end
@@ -1064,8 +1058,7 @@ local function reglages(page, ancre)
 end
 
 local function build()
-  frame = ns.newWindow("ComposantsFrame", "Composants", W, H_FEN)
-  frame.title:SetText("") -- la colonne des projets prend le coin
+  frame = ns.newWindow("ComposantsFrame", "Composants", W, H_FEN) -- son titre : le nom du projet affiché (frame.syncProjet)
   local function button(text, w, onClick)
     local b = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     b:SetSize(w, 22)
@@ -1076,13 +1069,8 @@ local function build()
   local function surBrouillon() return ns.estBrouillon(projet()) end
   frame.syncColonne = colonne(frame)
 
-  -- L'en-tête : le nom du projet et le fil, rien d'autre. On renomme par la colonne (clic droit).
-  local orderName = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  orderName:SetSize(320, 24)
-  orderName:SetPoint("TOPLEFT", X0, -8)
-  orderName:SetJustifyH("LEFT")
-  orderName:SetWordWrap(false)
-  frame.syncFil = ns.fil(frame, X0 + 330, -10)
+  -- L'en-tête : le nom du projet dans la barre de titre, le fil dessous. On renomme par la colonne (clic droit).
+  frame.syncFil = ns.fil(frame, X0, -TOP_CONTENU)
 
   -- Ligne d'ajout, en Préparer seulement : la recherche (taper un nom, ou y déposer un objet) et la quantité.
   local qty = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
@@ -1091,7 +1079,7 @@ local function build()
   qty:SetNumeric(true)
   qty:SetText("1")
   local name = searchBox(qty)
-  name:SetPoint("TOPLEFT", X0 + 6, -42)
+  name:SetPoint("TOPLEFT", X0 + 6, -TOP_CONTENU - 28)
   local indice = name:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   indice:SetPoint("LEFT", 2, 0)
   indice:SetText("ajouter un objet… (ou le déposer ici)")
@@ -1109,7 +1097,7 @@ local function build()
   -- (Fabriquer : Fabriquer.lua le pose au même endroit, frame.action) ; Clore (Fini).
   frame.action = CreateFrame("Frame", nil, frame)
   frame.action:SetSize(1, 24)
-  frame.action:SetPoint("BOTTOMRIGHT", -14, 10)
+  frame.action:SetPoint("BOTTOMRIGHT", -28, 10) -- à gauche de la poignée
   -- Lancer (CONTEXT.md) : le projet passe à Réunir, la petite vue (ses Besoins) prend la place de la grande. Sur le
   -- Brouillon, un vrai projet naît (le Brouillon se vide). Grisé sans ligne ; refusé par le fournisseur de l'emplacement :
   -- grisé, « Lancer (<sa raison>) ».
@@ -1156,7 +1144,7 @@ local function build()
   -- dessin commence sous ce qui est montré.
   frame.syncProjet = function()
     local b, ph = surBrouillon(), ns.phase(projet())
-    orderName:SetText(b and "Brouillon" or projet().name or "")
+    frame.title:SetText(b and "Brouillon" or projet().name or "")
     frame.syncFil()
     frame.syncColonne()
     for _, w in ipairs(ajout) do w:SetShown(ph == "preparer") end
@@ -1167,7 +1155,7 @@ local function build()
     lancerB:SetShown(ph == "preparer")
     lancerB:SetEnabled(#projet().lines > 0 and not refus)
     clore:SetShown(ph == "fini")
-    scroll:SetPoint("TOPLEFT", X0 - 4, ph == "preparer" and -74 or -42)
+    scroll:SetPoint("TOPLEFT", X0 - 4, -TOP_CONTENU - (ph == "preparer" and 58 or 28))
   end
   content = CreateFrame("Frame", nil, scroll)
   content:SetSize(W - X0 - 14, 1)
@@ -1219,7 +1207,14 @@ local function build()
   frame:RegisterEvent("BAG_UPDATE_DELAYED")
   frame:RegisterEvent("ITEM_DATA_LOAD_RESULT")
   frame:SetScript("OnEvent", soon)
-  frame:SetScript("OnShow", function() C_Timer.After(0, refresh) end) -- la largeur du défilement n'est connue qu'affichée
+  frame:HookScript("OnShow", function() C_Timer.After(0, refresh) end) -- la largeur du défilement n'est connue qu'affichée
+  -- Agrandie (la poignée du socle) : l'arbre se réétale sur la nouvelle largeur, au plus une fois par dixième de seconde.
+  local retaille
+  frame:HookScript("OnSizeChanged", function()
+    if retaille then return end
+    retaille = true
+    C_Timer.After(0.1, function() retaille = false; refresh() end)
+  end)
 end
 
 -- La fenêtre : l'objet id (facultatif) entre dans le projet affiché, puis la vue de sa phase.

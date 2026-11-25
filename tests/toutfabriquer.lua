@@ -52,9 +52,9 @@ test("le bouton d'action : la prochaine fabrication, une ou tout, sa fenêtre, l
         end
         return chercher(ComposantsFrame)
     end
-    local function enBas(b) -- en bas à droite de la grande vue, sous l'arbre
+    local function enBas(b) -- en bas à droite de la grande vue, sous l'arbre, à gauche de la poignée
         return b:GetParent() == ComposantsFrame and b:GetBottom() - ComposantsFrame:GetBottom() < 20
-            and ComposantsFrame:GetRight() - b:GetRight() < 20
+            and ComposantsFrame:GetRight() - b:GetRight() < 40
     end
     local function cerclee(c) return c.contour ~= nil and c.contour[1]:IsShown() end
     local function ligne(content, motif)
