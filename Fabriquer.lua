@@ -61,13 +61,34 @@ local function manque(f)
   end
 end
 
+-- Combien de fois les sacs permettent une fabrication (au plus f.fois) : ses composants seulement ; les outils et la
+-- forge, le jeu le dit une fois sa fenêtre ouverte.
+local function possible(f)
+  local n = f.fois
+  for _, rg in ipairs(f.recette.reagents or {}) do
+    if rg.id then n = math.min(n, math.floor(C_Item.GetItemCount(rg.id) / rg.qty)) end
+  end
+  return n
+end
+
+-- L'état d'une fabrication, la fenêtre de son métier ouverte : "pret" (n = ce qu'on peut faire d'un coup, au plus fois),
+-- "manque" (et le premier manque), "inconnue" (ce perso ne l'a pas apprise).
+local function etatOuvert(f)
+  local T = C_TradeSkillUI
+  local info = T.GetRecipeInfo(f.cle)
+  if not (info and info.learned) then f.etat = "inconnue" return f end
+  local n = T.GetCraftableCount(f.cle) or 0
+  if n > 0 then f.etat, f.n = "pret", math.min(n, f.fois) else f.etat, f.manque = "manque", manque(f) end
+  return f
+end
+
 -- La prochaine fabrication des projets tenus (le projet affiché d'abord, puis dans l'ordre de la liste) pour le métier
 -- ouvert : { p, cle, recette, id, fois (ce qu'il en reste), etat, n, manque }, ou nil s'il n'y a rien à fabriquer dans
 -- aucun projet tenu. etat = "pret" (n = ce qu'on peut faire d'un coup, au plus fois), "manque", "inconnue" (ce perso ne
 -- l'a pas apprise) ; "ailleurs" : rien pour ce métier, la prochaine est d'un autre (f.recette.profession).
 -- La première prête l'emporte ; aucune prête : la première du métier, avec sa raison.
 function ns.prochaineFabrication(metier)
-  local T, d = C_TradeSkillUI, ns.db()
+  local d = ns.db()
   local moi = UnitGUID("player")
   local function mien(p) return p and p.tenu and (p.tenuPar == nil or p.tenuPar == moi) end -- pas la tranche d'un autre perso
   local courant = d.projets[d.courant or 0]
@@ -80,20 +101,54 @@ function ns.prochaineFabrication(metier)
       if f.recette.profession ~= metier then
         ailleurs = ailleurs or f
       else
-        local info = T.GetRecipeInfo(f.cle)
-        if not (info and info.learned) then
-          f.etat = "inconnue"
-        else
-          local n = T.GetCraftableCount(f.cle) or 0
-          if n > 0 then f.etat, f.n = "pret", math.min(n, f.fois) return f end
-          f.etat, f.manque = "manque", manque(f)
-        end
+        if etatOuvert(f).etat == "pret" then return f end
         premiere = premiere or f
       end
     end
   end
   if premiere then return premiere end
   if ailleurs then ailleurs.etat = "ailleurs" return ailleurs end
+end
+
+-- « Tout fabriquer », sous la fenêtre des projets : la prochaine fabrication du projet p (celui affiché), tous métiers, dans
+-- l'ordre de aFabriquer ; la première que les composants des sacs permettent. Fenêtre de son métier ouverte (metier) : le
+-- jeu la confirme (etatOuvert) ; sinon etat = "ouvrir" (n = ce que les sacs permettent). Aucune : la première, etat =
+-- "manque". Rien à fabriquer : nil, et fini = true quand les objets du projet sont tous là.
+-- ponytail: l'arbre est recalculé ici, en plus du dessin de la fenêtre ; à partager si ça se sent.
+function ns.prochaineDuProjet(p, metier)
+  local res = ns.projetArbre(p, nil, ns.apportsHandshake(p))
+  local liste = aFabriquer(res)
+  for _, f in ipairs(liste) do
+    f.p = p
+    local n = possible(f)
+    if n > 0 then
+      if f.recette.profession == metier then return etatOuvert(f) end
+      f.etat, f.n = "ouvrir", n
+      return f
+    end
+  end
+  local f = liste[1]
+  if f then f.p, f.etat, f.manque = p, "manque", manque(f) return f end
+  local fini = #res.roots > 0
+  for _, c in ipairs(res.cases) do if c.kind == "target" and (c.need > 0 or c.made > 0) then fini = false end end
+  return nil, fini
+end
+
+-- « 4 × Barre d'étain » : les objets que n fabrications donnent ; un enchantement, n × son nom.
+local function combien(f, n)
+  if f.id then return ("%d × %s"):format(n * math.max(1, f.recette.made_min or 1), nom(f.id)) end
+  return ("%d × %s"):format(n, f.recette.name or "?")
+end
+
+-- Le libellé de « Tout fabriquer » : la prochaine action et son nombre, ou pourquoi rien ; e = la fabrication en cours.
+function ns.texteToutFabriquer(f, fini, e)
+  if e then return ("%s %d/%d…"):format(e.nom, e.fait * e.per, e.n * e.per) end
+  if not f then return fini and "Tout est fabriqué" or "Rien à fabriquer" end
+  if f.etat == "pret" then return "Fabriquer " .. combien(f, f.n) end
+  if f.etat == "ouvrir" then return ("Ouvrir %s : %s"):format(f.recette.profession or "son métier", combien(f, f.n)) end
+  if f.etat == "inconnue" then return "Recette inconnue : " .. (f.recette.name or "?") end
+  if f.manque then return ("Il manque %s pour %s"):format(f.manque, combien(f, f.fois)) end
+  return "Il manque de quoi faire " .. combien(f, f.fois)
 end
 
 -- « Ouvre la Forge », « Ouvre l'Alchimie », « Ouvre le Travail du cuir ».
@@ -167,15 +222,90 @@ local function rafraichir()
 end
 ns.rafraichirFabriquer = rafraichir
 
+---------------------------------------------------------------------------------------------------
+-- « Tout fabriquer », sous la barre d'état de la fenêtre des projets : guider sans réfléchir, quoi fabriquer, combien, dans
+-- quelle fenêtre. Un clic lance toute la prochaine fabrication du projet affiché (CraftRecipe(recette, n) : le jeu
+-- enchaîne, comme son « Créer tout ») ; pendant ce temps le bouton montre l'avancement et ne prend pas de second clic ;
+-- fini, il passe tout seul à la suivante. La fenêtre du métier fermée : « Ouvrir <métier> », car l'ouvrir est une action
+-- protégée (CastSpell) : c'est un bouton sécurisé dont la macro lance le métier. Jamais deux recettes sur un clic.
+-- Ses attributs ne s'écrivent que hors combat ; en combat il quitte la fenêtre (un enfant protégé la rendrait protégée :
+-- ni fermée ni déplacée en combat) et y revient à la sortie.
+local tf, tfFenetre, tfF, encours
+local function enCombat() return InCombatLockdown and InCombatLockdown() end
+local function enIncantation() return UnitCastingInfo and UnitCastingInfo("player") ~= nil end
+
+local function rafraichirTout()
+  if not (tf and tfFenetre:IsShown()) or enCombat() then return end -- en combat : refait à la sortie (PLAYER_REGEN_ENABLED)
+  -- ponytail: fin sans événement (le jeu refuse sans incantation) : 3 s sans fonte ni incantation, la fabrication est finie.
+  if encours and (encours.fait >= encours.n or (not enIncantation() and GetTime() - encours.t > 3)) then encours = nil end
+  local f, fini = ns.prochaineDuProjet(ns.projetCourant(), ProfessionsFrame and ProfessionsFrame:IsShown() and metierOuvert() or nil)
+  tfF = f
+  local pret = f and f.etat == "pret" and not encours
+  local ouvrir = f and f.etat == "ouvrir" and not encours
+  tf:SetText(ns.texteToutFabriquer(f, fini, encours))
+  tf:SetWidth(tf:GetTextWidth() + 30)
+  tf:SetAttribute("type", ouvrir and "macro" or nil)
+  tf:SetAttribute("macrotext", ouvrir and ("/cast " .. f.recette.profession) or nil)
+  tf:SetEnabled((pret or ouvrir) and true or false)
+end
+ns.rafraichirToutFabriquer = rafraichirTout
+
+local function lancer()
+  local f = tfF
+  if encours or not (f and f.etat == "pret") then return end -- en cours, ou « Ouvrir » (la macro s'en charge)
+  encours = { cle = f.cle, nom = f.id and nom(f.id) or f.recette.name or "?", per = f.id and math.max(1, f.recette.made_min or 1) or 1,
+    n = f.n, fait = 0, t = GetTime() }
+  C_TradeSkillUI.CraftRecipe(f.cle, f.n)
+  C_Timer.After(3.5, rafraichirTout)
+  rafraichirTout()
+end
+
+-- Le bouton dans la fenêtre (fait hors combat seulement : un bouton sécurisé ne se crée ni ne s'ancre en combat).
+local function placer()
+  if not tfFenetre or enCombat() then return end
+  if not tf then
+    tf = CreateFrame("Button", "ComposantsToutFabriquer", tfFenetre, "SecureActionButtonTemplate, UIPanelButtonTemplate")
+    tf:SetHeight(22)
+    tf:RegisterForClicks("AnyDown", "AnyUp") -- comme les boutons sécurisés de Be a Good Pal ; le second appel de lancer ne fait rien
+    tf:SetAttribute("useOnKeyDown", GetCVarBool and GetCVarBool("ActionButtonUseKeyDown") or false)
+    tf:SetScript("PostClick", lancer)
+  end
+  tf:SetParent(tfFenetre)
+  tf:ClearAllPoints()
+  tf:SetPoint("BOTTOMLEFT", tfFenetre, "BOTTOMLEFT", 14, 8)
+  tf:Show()
+  rafraichirTout()
+end
+function ns.boutonToutFabriquer(fenetre) tfFenetre = fenetre; placer() end
+
 -- Fenêtre de métier ouverte ou mise à jour, sacs changés (une fabrication finie), projet changé : au plus une fois par
 -- image d'événements.
 local prevu
 local function bientot()
   if prevu then return end
   prevu = true
-  C_Timer.After(0.2, function() prevu = false; rafraichir() end)
+  C_Timer.After(0.2, function() prevu = false; rafraichir(); rafraichirTout() end)
 end
 local ev = CreateFrame("Frame")
-for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_CLOSE", "BAG_UPDATE_DELAYED" }) do ev:RegisterEvent(e) end
-ev:SetScript("OnEvent", bientot)
+for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_CLOSE", "BAG_UPDATE_DELAYED",
+  "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do ev:RegisterEvent(e) end
+for _, e in ipairs({ "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_STOP" }) do
+  ev:RegisterUnitEvent(e, "player")
+end
+ev:SetScript("OnEvent", function(_, e, _, _, sort)
+  if e == "PLAYER_REGEN_DISABLED" then -- juste avant le verrou du combat : encore permis
+    if tf then tf:Hide(); tf:ClearAllPoints(); tf:SetParent(UIParent) end
+    return
+  end
+  if e == "PLAYER_REGEN_ENABLED" then placer() end
+  if encours and sort == encours.cle then -- l'avancement de « Tout fabriquer »
+    if e == "UNIT_SPELLCAST_SUCCEEDED" then
+      encours.fait, encours.t = encours.fait + 1, GetTime()
+      C_Timer.After(3.5, bientot)
+    elseif e ~= "UNIT_SPELLCAST_STOP" then
+      encours = nil -- interrompue, refusée
+    end
+  end
+  bientot()
+end)
 ns.quandChange(bientot)

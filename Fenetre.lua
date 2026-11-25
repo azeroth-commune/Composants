@@ -11,7 +11,7 @@
 -- prend n'est plus là pour le suivant.
 local _, ns = ...
 
-local W, H_FEN = 1000, 690
+local W, H_FEN = 1000, 716
 local NODE_W, NODE_H, GAP, TOP = 190, 42, 18, 36 -- l'écart et le haut laissent la place au nom des artisans
 local RELAY = 14 -- place réservée à un lien qui traverse un étage
 local BAND_GAP = 30 -- entre les rectangles de deux artisans (la place de leur nom)
@@ -658,6 +658,7 @@ local function refresh()
 
   frame.status:SetText(ns.texteHV(market)
     .. " · « + » décompose, « – » achète tout fait (violet = ton choix) · molette : zoom, glisser : déplacer, clic milieu : ajuster")
+  ns.rafraichirToutFabriquer()
 end
 ns.refreshCraftWindow = refresh
 
@@ -923,7 +924,7 @@ local function build()
   -- La zone de dessin : molette = zoom autour du curseur, glisser le fond = déplacer, clic du milieu = vue ajustée.
   scroll = CreateFrame("Frame", nil, frame)
   scroll:SetPoint("TOPLEFT", 14, hs and -180 or -156) -- avec Handshake, la ligne des commandes au-dessus
-  scroll:SetPoint("BOTTOMRIGHT", -14, 30)
+  scroll:SetPoint("BOTTOMRIGHT", -14, 56)
   scroll:SetClipsChildren(true)
   content = CreateFrame("Frame", nil, scroll)
   content:SetSize(W - 28, 1)
@@ -961,7 +962,8 @@ local function build()
   end)
 
   frame.status = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  frame.status:SetPoint("BOTTOMLEFT", 14, 10)
+  frame.status:SetPoint("BOTTOMLEFT", 14, 36)
+  ns.boutonToutFabriquer(frame) -- dessous : « Tout fabriquer » (Fabriquer.lua)
 
   -- Les sacs changent, un nom d'objet arrive du serveur : on recalcule, au plus une fois par seconde.
   local pending

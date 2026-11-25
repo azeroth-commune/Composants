@@ -759,6 +759,81 @@ do
 end
 print("Composants : Fabriquer, la prochaine fabrication d'un projet tenu OK")
 
+-- « Tout fabriquer » (fenêtre des projets) : la prochaine fabrication du projet affiché, tous métiers, dans l'ordre de
+-- dépendance ; la première que les sacs permettent. Le projet de la capture du 25/11 : 4 Dory en bronze (8 barres de bronze et
+-- 4 catalyseurs chacune), 7 barres de bronze, 13 de cuivre, 9 d'étain et 4 minerais d'étain en sac.
+do
+  local function prix(pc) return { tiers = { { price = pc, qty = 999 } } } end
+  local function nom(id) return (ns.itemLabel(id):gsub("%[(.-)%]", "%1")) end
+  local DORY, FLUX = 99100, 2880
+  local sacs
+  local function poser(s)
+    sacs = s
+    donnees({ hv = { [DORY] = prix(100000), [2841] = prix(1000), [3576] = prix(500), [2771] = prix(10), [2840] = prix(300), [FLUX] = prix(10) },
+      recettes = {
+        [99101] = { name = "Dory en bronze", output = DORY, profession = "Forge", reagents = { { id = 2841, qty = 8 }, { id = FLUX, qty = 4 } } },
+        [2659] = { name = "Fonte du bronze", output = 2841, made_min = 2, profession = "Minage", reagents = { { id = 2840, qty = 1 }, { id = 3576, qty = 1 } } },
+        [3304] = { name = "Fonte de l'étain", output = 3576, profession = "Minage", reagents = { { id = 2771, qty = 1 } } } },
+      sacs = s })
+    AzerothCommuneDB.chars[MOI].recipes = { Minage = { rank = 75, known = { [3304] = true, [2659] = true } },
+      Forge = { rank = 100, known = { [99101] = true } } }
+  end
+  local faisable, requis = {}, {}
+  C_TradeSkillUI = {
+    GetRecipeInfo = function() return { learned = true } end,
+    GetCraftableCount = function(k) return faisable[k] or 0 end,
+    GetRecipeRequirements = function() return requis end,
+  }
+  C_Item.GetItemCount = function(id) return sacs[id] or 0 end
+  local T = ns.texteToutFabriquer
+  poser({ [2841] = 7, [2840] = 13, [3576] = 9, [2771] = 4 })
+  local p = Composants.NouveauProjet({ name = "Dory", lines = { { id = DORY, qty = 4 } } })
+  -- Aucune fenêtre de métier : d'abord les 4 barres d'étain (le bas de l'arbre), dans la fenêtre du Minage.
+  local f = ns.prochaineDuProjet(p, nil)
+  assert(f and f.cle == 3304 and f.etat == "ouvrir" and f.n == 4, "d'abord l'étain, fenêtre à ouvrir")
+  assert(T(f) == "Ouvrir Minage : 4 × " .. nom(3576), T(f))
+  -- Le Minage ouvert, le jeu confirme : on fabrique les 4.
+  faisable[3304] = 4
+  f = ns.prochaineDuProjet(p, "Minage")
+  assert(f.cle == 3304 and f.etat == "pret" and f.n == 4 and T(f) == "Fabriquer 4 × " .. nom(3576), T(f))
+  -- Les 4 barres d'étain arrivent : le bronze, 13 fontes de 2 barres.
+  poser({ [2841] = 7, [2840] = 13, [3576] = 13 })
+  faisable[2659] = 13
+  f = ns.prochaineDuProjet(p, "Minage")
+  assert(f.cle == 2659 and f.etat == "pret" and f.n == 13 and T(f) == "Fabriquer 26 × " .. nom(2841), T(f))
+  -- Le bronze fondu : les Dory, mais le catalyseur manque (à acheter) ; rien n'est proposé.
+  poser({ [2841] = 33 })
+  f = ns.prochaineDuProjet(p, "Minage")
+  assert(f.cle == 99101 and f.etat == "manque" and T(f) == "Il manque " .. nom(FLUX) .. " pour 4 × " .. nom(DORY), T(f))
+  -- Acheté : la Forge à ouvrir ; ouverte sans enclume, le jeu le dit ; avec, on fabrique.
+  poser({ [2841] = 33, [FLUX] = 16 })
+  f = ns.prochaineDuProjet(p, "Minage")
+  assert(f.etat == "ouvrir" and T(f) == "Ouvrir Forge : 4 × " .. nom(DORY), T(f))
+  requis = { { name = "Enclume", met = false } }
+  f = ns.prochaineDuProjet(p, "Forge")
+  assert(f.cle == 99101 and f.etat == "manque" and T(f) == "Il manque Enclume pour 4 × " .. nom(DORY), T(f))
+  requis, faisable[99101] = {}, 4
+  f = ns.prochaineDuProjet(p, "Forge")
+  assert(f.etat == "pret" and T(f) == "Fabriquer 4 × " .. nom(DORY), T(f))
+  -- Les 4 Dory en sac : tout est fait.
+  poser({ [DORY] = 4 })
+  local fini
+  f, fini = ns.prochaineDuProjet(p, "Forge")
+  assert(f == nil and fini and T(f, fini) == "Tout est fabriqué", T(f, fini))
+  -- Sacs vides : rien de proposé, la première fabrication dit ce qui lui manque.
+  poser({})
+  f = ns.prochaineDuProjet(p, "Minage")
+  assert(f.cle == 3304 and f.etat == "manque" and T(f) == "Il manque " .. nom(2771) .. " pour 16 × " .. nom(3576), T(f))
+  -- Un projet vide : rien à fabriquer.
+  f, fini = ns.prochaineDuProjet(Composants.NouveauProjet({ name = "Vide" }), nil)
+  assert(f == nil and not fini and T(f, fini) == "Rien à fabriquer", T(f, fini))
+  -- En cours : l'avancement, en objets.
+  assert(T(nil, nil, { nom = "Barre de bronze", per = 2, n = 13, fait = 2 }) == "Barre de bronze 4/26…")
+  C_TradeSkillUI, C_Item.GetItemCount = nil, nil
+  commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
+end
+print("Composants : Tout fabriquer, la prochaine fabrication du projet affiché OK")
+
 -- L'infobulle des objets (#16) : « Utilisé dans » (les projets dont l'arbre le demande) et « Fabriqué par » (mes persos qui
 -- connaissent une recette qui le fabrique), rien pour un objet qui n'entre dans rien ; le cache suit les projets.
 do

@@ -14,6 +14,12 @@ _Avoid_: liste, suivi
 Une ligne « recette × nombre de fois » au lieu de « objet × quantité » : sa case racine est toujours fabriquée (jamais achetée toute faite), et une recette sans objet produit (un enchantement) n'a pour cases que ses composants ; c'est ainsi qu'une tranche de montée tient son projet.
 _Avoid_: craft, ligne forcée
 
+**Prochaine fabrication** (d'un projet):
+Ce qu'il faut fabriquer maintenant : dans l'ordre de l'arbre, du bas vers le haut (les barres avant l'armure), la première
+fabrication que les composants des sacs permettent, faite d'un coup dans la fenêtre de son métier ; le bouton « Tout
+fabriquer » la nomme avec son nombre, la lance, puis passe à la suivante. Jamais deux recettes sur un clic.
+_Avoid_: étape suivante, file de fabrication
+
 **Brouillon**:
 Le projet de passage, unique et toujours là, où atterrit tout Ctrl+clic droit sur un objet ; on le vide ou on en retire des lignes, et « + » en fait un vrai projet. Il n'est pas dans la liste des projets, et on n'y commande rien.
 _Avoid_: projet temporaire, scratch
