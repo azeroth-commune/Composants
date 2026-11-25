@@ -78,6 +78,18 @@ end
 -- Le projet affiché ; déclaré ici, avant toute fonction qui l'appelle (déclaré plus bas, une bulle d'étiquette de commande
 -- appelait un « projet » global inexistant).
 local function projet() return ns.projetCourant() end
+-- Le fournisseur refuse-t-il Lancer ? Sa raison (« Lancer (<raison>) »), ou nil. Une erreur chez lui (signalée) : nil.
+function ns.refusLancer(p)
+  local r = ns.demander(p, "lancer", p)
+  return type(r) == "string" and r or nil
+end
+-- Le fournisseur dit-il Fini lui-même ? true ou false (lui seul décide), nil (la règle de Composants : l'arbre plein et
+-- clos ; aussi sans lui, sans ce champ, ou sur une erreur chez lui, signalée).
+function ns.finiEmplacement(p)
+  local r = ns.demander(p, "fini", p)
+  if r == nil then return nil end
+  return r and true or false
+end
 -- Les cases que le fournisseur dit fournies par un autre (nil sans lui) : elles sortent de l'arbre.
 function ns.apportsEmplacement(p) return ns.demander(p, "apports", p) end
 -- Vue du dessin : zoom (× l'échelle qui fait tout tenir en largeur) et décalage, en unités du dessin.
@@ -161,7 +173,8 @@ function ns.fil(parent, x, y)
       b:SetPoint("LEFT", sep, "RIGHT", 4, 0)
     end
     b:SetScript("OnClick", function()
-      if not ns.allerPhase(projet(), ph[1]) then return print("Composants : le Brouillon est vide, rien à lancer.") end
+      local ok, raison = ns.allerPhase(projet(), ph[1])
+      if not ok then return print(("Composants : Lancer refusé (%s)."):format(raison or "?")) end
       ns.montrerVue()
     end)
     b:SetScript("OnEnter", function(self)
@@ -1098,7 +1111,8 @@ local function build()
   frame.action:SetSize(1, 24)
   frame.action:SetPoint("BOTTOMRIGHT", -14, 10)
   -- Lancer (CONTEXT.md) : le projet passe à Réunir, la petite vue (ses Besoins) prend la place de la grande. Sur le
-  -- Brouillon, un vrai projet naît (le Brouillon se vide). Grisé sans ligne.
+  -- Brouillon, un vrai projet naît (le Brouillon se vide). Grisé sans ligne ; refusé par le fournisseur de l'emplacement :
+  -- grisé, « Lancer (<sa raison>) ».
   local lancerB = button("Lancer", 140, function()
     if not ns.lancer(projet()) then return end
     ns.montrerVue()
@@ -1109,7 +1123,9 @@ local function build()
   lancerB:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
     GameTooltip:AddLine("Lancer")
+    local refus = ns.refusLancer(projet())
     if #projet().lines == 0 then GameTooltip:AddLine("Rien à lancer : ajoute un objet", 0.9, 0.3, 0.3)
+    elseif refus then GameTooltip:AddLine("Pas encore : " .. refus, 0.9, 0.3, 0.3, true)
     else
       GameTooltip:AddLine("Le projet passe à Réunir : ses Besoins seuls ; tout dans les sacs, Fabriquer vient tout seul.", 1, 1, 1, true)
       if surBrouillon() then GameTooltip:AddLine("Le Brouillon devient un projet, un Brouillon vide le remplace.", 0.6, 0.6, 0.6, true) end
@@ -1145,8 +1161,11 @@ local function build()
     frame.syncColonne()
     for _, w in ipairs(ajout) do w:SetShown(ph == "preparer") end
     indiquer()
+    local refus = ph == "preparer" and ns.refusLancer(projet())
+    lancerB:SetText(refus and ("Lancer (%s)"):format(refus) or "Lancer")
+    lancerB:SetWidth(math.max(140, lancerB:GetFontString():GetStringWidth() + 24))
     lancerB:SetShown(ph == "preparer")
-    lancerB:SetEnabled(#projet().lines > 0)
+    lancerB:SetEnabled(#projet().lines > 0 and not refus)
     clore:SetShown(ph == "fini")
     scroll:SetPoint("TOPLEFT", X0 - 4, ph == "preparer" and -74 or -42)
   end

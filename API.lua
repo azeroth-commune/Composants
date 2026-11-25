@@ -58,6 +58,10 @@ Composants = {
   -- Fabriquer → Fini l'attendent ; sans clos : vrai) ; aDonner = fn(p) → { [itemID] = true } ou nil, les cases que le
   -- joueur donne lui-même à un bloc confié : elles restent des lignes de ses Besoins. Un bloc confié sort des Besoins (ses
   -- cases et ce qui n'est fabriqué que pour lui), sauf ce qu'on lui donne.
+  -- Les phases (CONTEXT.md, Phase), champs facultatifs : lancer = fn(p) → une raison (chaîne) qui refuse Lancer, ou nil ;
+  -- refusé, le bouton dit « Lancer (<raison>) », grisé, et le fil ne quitte pas Préparer non plus. fini = fn(p) → true,
+  -- false ou nil : nil garde la règle de Composants (plus rien à fabriquer, et clos) ; true ou false, le fournisseur décide
+  -- seul, sans l'arbre (true : un projet lancé, en Réunir ou en Fabriquer, passe en Fini).
   -- ponytail: un seul fournisseur (Handshake) ; une liste le jour où un deuxième add-on veut dessiner dans les blocs.
   Emplacements = function(f)
     local avant = ns.fournisseur

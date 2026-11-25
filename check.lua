@@ -533,6 +533,27 @@ do
   assert(not ns.avancerPhase(p) and ns.phase(p) == "fabriquer", "plus rien à fabriquer, pas clos : pas Fini")
   clos = true
   assert(ns.avancerPhase(p) and ns.phase(p) == "fini", "clos : Fini")
+  -- Les phases dites par le fournisseur : lancer refuse Lancer (le fil aussi), fini décide seul de Fini.
+  local refus, fini = "à signer", nil
+  Composants.Emplacements({ lancer = function() return refus end, fini = function() return fini end, clos = function() return true end })
+  ns.projetPhase(p, "preparer")
+  local q, raison = ns.lancer(p)
+  assert(q == nil and raison == "à signer" and ns.phase(p) == "preparer", "lancer refusé : Préparer, avec sa raison")
+  q, raison = ns.allerPhase(p, "fabriquer")
+  assert(q == nil and raison == "à signer" and ns.phase(p) == "preparer", "le fil ne contourne pas le refus")
+  assert(ns.allerPhase(p, "preparer") == p, "rester en Préparer : permis")
+  assert(ns.refusLancer(ns.brouillon()) == nil, "jamais demandé pour le Brouillon")
+  refus = nil
+  assert(ns.lancer(p) == p and ns.phase(p) == "reunir", "permis : Réunir")
+  ns.allerPhase(p, "fabriquer")
+  fini = false
+  assert(not ns.avancerPhase(p) and ns.phase(p) == "fabriquer", "fini faux : pas Fini, même plus rien à fabriquer et clos")
+  fini = nil
+  assert(ns.avancerPhase(p) and ns.phase(p) == "fini", "fini nil : la règle de Composants")
+  ns.projetPhase(p, "reunir")
+  ns.projetFini = function() return false end
+  fini = true
+  assert(ns.avancerPhase(p) and ns.phase(p) == "fini", "fini vrai : Fini depuis Réunir, sans l'arbre")
   ns.projetFini = projetFini
   -- Une erreur chez le fournisseur : signalée, pas clos.
   local erreurs, handler = {}, geterrorhandler
@@ -544,7 +565,7 @@ do
   assert(ns.closEmplacement(p), "sans fournisseur : clos")
   Composants.Supprimer(p.id)
 end
-print("Composants : l'emplacement des Besoins (part confiée, aDonner, clos) OK")
+print("Composants : l'emplacement des Besoins (part confiée, aDonner, clos ; lancer, fini) OK")
 commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
 
 -- Suggestions : la barre de recherche du socle (AzerothCommune#60), plus de copie ni d'index d'objets à Composants.
