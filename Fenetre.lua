@@ -14,7 +14,7 @@
 -- orange = à fabriquer, gris = à acheter, rouge = ni prix ni recette (pas de légende : la bulle de la case le dit).
 local _, ns = ...
 
-local W, H_FEN = 920, 440 -- taille de départ et minimum (AzerothCommune.Fenetre) : un projet d'un craft y tient, la poignée pour un gros arbre
+local W, H_FEN = 720, 400 -- taille de départ et minimum (AzerothCommune.Fenetre) : le cas courant ; l'arbre se zoome pour tenir, la poignée pour un gros arbre
 local COL_W, X0 = 180, 200 -- la colonne des projets, et le bord gauche de ce qui est à sa droite
 local TOP_CONTENU = 30 -- le contenu commence sous la barre de titre du gabarit
 local NODE_W, NODE_H, GAP, TOP = 190, 42, 8, 36 -- le haut laisse la place à la ligne du projet et au nom du premier artisan
