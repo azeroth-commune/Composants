@@ -451,6 +451,22 @@ local function blocs(res, crafters)
     return a.key < b.key
   end)
   res.blocs, res.blocDe, res.livraisons = groups, byKey, orders
+  -- Le temps de fabrication (AzerothCommune#70, comme Maîtrise) : fabrications restantes × temps d'incantation de la recette
+  -- (cast, secondes, de la base des recettes), par bloc (grp.temps) et en tout (res.temps, avec les enchantements, qui n'ont
+  -- pas de case) ; tempsIncomplet = une recette sans cast connu (son temps n'est pas compté).
+  local function ajouter(t, crafts, recette)
+    if crafts <= 0 then return end
+    if recette and recette.cast then t.temps = t.temps + crafts * recette.cast else t.tempsIncomplet = true end
+  end
+  res.temps = 0
+  for _, grp in ipairs(groups) do
+    grp.temps = 0
+    for _, n in ipairs(grp.cases) do ajouter(grp, n.crafts, n.recipe) end
+    res.temps, res.tempsIncomplet = res.temps + grp.temps, res.tempsIncomplet or grp.tempsIncomplet
+  end
+  for _, r in ipairs(res.roots or {}) do
+    if r.fabrication and not r.id then ajouter(res, r.crafts, r.recipe) end
+  end
 end
 
 -- Valeur à l'HV (CONTEXT.md) des objets que fabriquent ces lignes : chacun au prix le plus bas de l'HV × sa quantité ; nil

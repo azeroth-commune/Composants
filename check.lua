@@ -443,7 +443,7 @@ end
 do
   local gr = ns.dessinArbre(both({ [2841] = "fabriquer" }))
   local forge = gr.groupOf.Forge
-  assert(forge.label == "Étape 2 · Forge · niv. 100 requis · Bel Dupont 164 (1/2)", forge.label)
+  assert(forge.label == "Étape 2 · Forge · niv. 100 requis · Bel Dupont 164 (1/2) · temps inconnu", forge.label)
   -- Rectangles : chaque métier dans sa bande, aucune case d'un autre dans son rectangle.
   for _, grp in ipairs(gr.groups) do
     local top, bottom, left, right = math.huge, -math.huge, math.huge, -math.huge
@@ -459,7 +459,7 @@ do
   assert(gr.byKey.I2770.band == "Minage", "minerai sous le bronze : dans la bande du minage")
   bronzeR.profession = "Couture"
   gr = ns.dessinArbre(both({ [2841] = "fabriquer" }))
-  assert(gr.groupOf.Couture.label == "Étape 1 · Couture · personne de ta liste", gr.groupOf.Couture.label)
+  assert(gr.groupOf.Couture.label == "Étape 1 · Couture · personne de ta liste · temps inconnu", gr.groupOf.Couture.label)
   for _, n in ipairs(gr.nodes) do -- rien ne se chevauche, bande sans artisan comprise
     for _, m in ipairs(gr.nodes) do
       assert(n == m or n.col ~= m.col or n.y + 42 <= m.y or m.y + 42 <= n.y, "cases superposées")
@@ -877,6 +877,33 @@ do
   commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
 end
 print("Composants : lignes fabrication d'un projet tenu OK")
+
+-- Le temps de fabrication (AzerothCommune#70) : fabrications restantes × temps d'incantation (cast), par étape et en tout ;
+-- une recette sans cast : « au moins » (ou « temps inconnu ») ; il suit le décompte des fabrications faites.
+do
+  local function prix(pc) return { tiers = { { price = pc, qty = 999 } } } end
+  donnees({ hv = { [2840] = prix(10), [3576] = prix(10), [2770] = prix(2), [10940] = prix(50) },
+    recettes = {
+      [2659] = { name = "Fonte du bronze", output = 2841, made_min = 2, profession = "Minage", cast = 3, reagents = { { id = 2840, qty = 1 }, { id = 3576, qty = 1 } } },
+      [2657] = { name = "Fonte du cuivre", output = 2840, profession = "Minage", reagents = { { id = 2770, qty = 1 } } }, -- sans cast
+      [7420] = { name = "Enchanter le plastron - Vie mineure", profession = "Enchantement", cast = 5, reagents = { { id = 10940, qty = 1 } } } } })
+  local p = Composants.NouveauProjet({ name = "Temps", lines = { { recette = 2659, fois = 5 }, { recette = 7420, fois = 3 } } })
+  local res = Composants.Arbre(p, true) -- 5 fontes de bronze × 3 s (des fabrications, pas les 10 barres), 3 enchantements × 5 s
+  assert(res.temps == 30 and res.tempsIncomplet and res.blocDe.Minage.temps == 15 and res.blocDe.Minage.tempsIncomplet,
+    "le cuivre fondu n'a pas de temps : au moins")
+  assert(ns.texteTemps(res) == "au moins 30 s" and ns.texteTemps(res.blocDe.Minage) == "au moins 15 s", ns.texteTemps(res))
+  assert(ns.dessinArbre(res).groupOf.Minage.label:find(" · au moins 15 s$"), "sur la ligne de l'étape")
+  Composants.Choix(p, 2840, "acheter") -- le cuivre acheté : tous les temps connus
+  res = Composants.Arbre(p, true)
+  assert(res.temps == 30 and not res.tempsIncomplet and ns.texteTemps(res) == "30 s", tostring(ns.texteTemps(res)))
+  ns.projetPhase(p, "fabriquer"); ns.compterFabrication(2659); ns.compterFabrication(2659)
+  assert(Composants.Arbre(p, true).temps == 3 * 3 + 15, "il suit les fabrications faites")
+  assert(ns.duree(45) == "45 s" and ns.duree(129) == "2 min" and ns.duree(3900) == "1 h 05", ns.duree(3900))
+  assert(ns.texteTemps({ temps = 0, tempsIncomplet = true }) == "temps inconnu" and ns.texteTemps({ temps = 0 }) == nil)
+  Composants.Supprimer(p.id)
+  commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
+end
+print("Composants : temps de fabrication OK")
 
 -- La prochaine fabrication (le bouton d'action en Fabriquer) : celle du projet affiché, tous métiers, dans l'ordre de
 -- dépendance ; la première que les sacs permettent. Le projet de la capture du 25/11 : 4 Dory en bronze (8 barres de bronze et

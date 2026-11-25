@@ -374,7 +374,7 @@ function ns.dessinArbre(res, confies)
     local who = {}
     for _, c in ipairs(grp.crafters) do who[#who + 1] = ("%s %d (%d/%d)"):format(c.name, c.rank, c.known, #grp.recipes) end
     grp.label = ("Étape %d · %s%s · %s"):format(grp.step, grp.key, grp.level > 0 and (" · niv. " .. grp.level .. " requis") or "",
-      #who > 0 and table.concat(who, ", ") or "personne de ta liste")
+      #who > 0 and table.concat(who, ", ") or "personne de ta liste") .. (ns.texteTemps(grp) and (" · " .. ns.texteTemps(grp)) or "")
     grp.cards = {}
     for _, n in ipairs(list) do if n.band == grp.key then grp.cards[#grp.cards + 1] = n end end
   end
@@ -639,6 +639,21 @@ local function curve(x1, y1, x2, y2, col, qty, thick)
 end
 
 local headers = {}
+-- Une durée en clair : « 45 s », « 2 min », « 1 h 05 ».
+-- ponytail: la même que celle de Maîtrise (Fenetre.lua) ; au socle au troisième usage.
+function ns.duree(s)
+  s = math.floor(s + 0.5)
+  if s < 60 then return s .. " s" end
+  if s < 3600 then return math.floor(s / 60 + 0.5) .. " min" end
+  return ("%d h %02d"):format(math.floor(s / 3600), math.floor(s % 3600 / 60))
+end
+-- Le temps de fabrication d'un bloc ou du projet (t.temps, t.tempsIncomplet, Projet.lua) : « 2 min », « au moins 2 min » si
+-- une recette n'a pas de temps connu, « temps inconnu » si aucune ; nil s'il n'y a plus rien à fabriquer.
+function ns.texteTemps(t)
+  if (t.temps or 0) > 0 then return (t.tempsIncomplet and "au moins " or "") .. ns.duree(t.temps) end
+  return t.tempsIncomplet and "temps inconnu" or nil
+end
+
 local function header(i, x, text)
   local h = headers[i] or content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   headers[i] = h
@@ -681,7 +696,9 @@ local function refresh()
     -- Valeur à l'HV de ce qu'on fabrique, et ce que ça rapporte quand le coût est complet ; rien sans prix.
     local v = res.valeur and (" · vaut %s à l'HV · %s"):format(ns.moneyShort(res.valeur),
       res.rapporte and "rapporte " .. ns.moneySigned(res.rapporte) or "|cffe64d4dcoût incomplet|r") or ""
-    header(1, 0, (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost .. v .. fini)
+    local temps = ns.texteTemps(res)
+    temps = temps and (" · " .. temps .. ((res.temps or 0) > 0 and " de fabrication" or "")) or ""
+    header(1, 0, (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost .. v .. temps .. fini)
   end
   -- L'emplacement du projet entier : une bande à la suite de cette ligne ; confié, la seule case de l'arbre.
   zoneProjet, caseProjet = zoneProjet or newZone(), caseProjet or newZone(true)
