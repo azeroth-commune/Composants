@@ -126,3 +126,23 @@ test("le projet entier confié : une seule case ; ses apports sortent de l'arbre
         assertTrue(n ~= nil and n.apport > 0 and n.need == 0, "la case fournie, hors de l'arbre")
     end)
 end)
+
+test("une erreur du fournisseur ne casse pas la fenêtre : elle est signalée, l'arbre est dessiné", function()
+    local erreurs, geh = {}, geterrorhandler
+    geterrorhandler = function() return function(e) erreurs[#erreurs + 1] = e end end
+    local casse = function() error("fournisseur cassé") end
+    local avant = Composants.Emplacements({ confie = casse, bloc = casse, apports = casse })
+    local unlearned = ComposantsDB.options.unlearned
+    ComposantsDB.options.unlearned = true
+    local ok, err = pcall(function()
+        SlashCmdList.COMPOSANTS("demo ceinture")
+        assertTrue(#cases() > 0, "l'arbre est dessiné")
+        assertTrue(#blocsDessines() > 0, "les blocs aussi")
+        assertTrue(#erreurs > 0, "l'erreur est signalée")
+    end)
+    ComposantsDB.options.unlearned = unlearned
+    geterrorhandler = geh
+    Composants.Emplacements(avant)
+    ComposantsFrame:Hide()
+    if not ok then error(err, 0) end
+end)
