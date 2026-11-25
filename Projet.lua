@@ -306,7 +306,7 @@ local function cases(roots, choix)
   for i, r in ipairs(roots) do
     if r.id then
       local t = nodeOf("T" .. i, "target", r.id)
-      t.index, t.fabrication = i, r.fabrication
+      t.index, t.fabrication, t.faites = i, r.fabrication, r.faites -- faites : les objets déjà fabriqués de cette ligne
       add(t, r)
     else -- une fabrication sans objet produit (un enchantement) : seulement ses composants, sans case au-dessus
       for _, part in ipairs(r.parts) do add(nodeOf("I" .. part.id, "item", part.id), part) end
@@ -501,6 +501,7 @@ function ns.projetArbre(p, opts, apports)
     local faites = l.recette and p.faites and p.faites[l.recette]
     if faites then l = { recette = l.recette, fois = math.max(0, l.fois - faites) } end -- ce qu'il reste à faire
     roots[i], market, stock, vendors = ns.craftPlan(l, opts or db().options, stock, apports, p.choix, vendors)
+    if faites and faites > 0 then roots[i].faites = faites * math.max(1, roots[i].recipe.made_min or 1) end -- en objets
     total = total + (roots[i].cost or 0)
     incomplete = incomplete or roots[i].incomplete or not roots[i].cost
   end
