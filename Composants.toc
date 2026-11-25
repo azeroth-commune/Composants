@@ -8,6 +8,7 @@
 ## Dependencies: AzerothCommune
 ## OptionalDeps: Handshake
 ## SavedVariables: ComposantsDB
+## X-Curse-Project-ID: 1830064
 Donnees.lua
 Calcul.lua
 Projet.lua
