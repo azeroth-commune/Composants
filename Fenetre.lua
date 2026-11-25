@@ -14,12 +14,12 @@
 -- orange = à fabriquer, gris = à acheter, rouge = ni prix ni recette (pas de légende : la bulle de la case le dit).
 local _, ns = ...
 
-local W, H_FEN = 1000, 690
+local W, H_FEN = 920, 440 -- taille de départ et minimum (AzerothCommune.Fenetre) : un projet d'un craft y tient, la poignée pour un gros arbre
 local COL_W, X0 = 180, 200 -- la colonne des projets, et le bord gauche de ce qui est à sa droite
 local TOP_CONTENU = 30 -- le contenu commence sous la barre de titre du gabarit
-local NODE_W, NODE_H, GAP, TOP = 190, 42, 18, 36 -- l'écart et le haut laissent la place au nom des artisans
-local RELAY = 14 -- place réservée à un lien qui traverse un étage
-local BAND_GAP = 30 -- entre les rectangles de deux artisans (la place de leur nom)
+local NODE_W, NODE_H, GAP, TOP = 190, 42, 8, 36 -- le haut laisse la place à la ligne du projet et au nom du premier artisan
+local RELAY = 10 -- place réservée à un lien qui traverse un étage
+local BAND_GAP = 28 -- entre les rectangles de deux artisans (la place de leur nom et de l'emplacement, haut de 16)
 local MARGIN = 10   -- à gauche et à droite : le rectangle d'un artisan dépasse ses cases de 6
 local STEP = NODE_H + GAP
 local COLORS = {
@@ -680,7 +680,7 @@ local function refresh()
   -- Les étages s'étalent sur la largeur ; trop nombreux, le dessin rétrécit pour tenir (puis molette pour zoomer).
   local avail = scroll:GetWidth()
   if avail < 100 then avail = W - X0 - 14 end -- pas encore mis en page
-  local spacing = g.cols > 1 and math.max(NODE_W + 60, (avail - NODE_W - 2 * MARGIN) / (g.cols - 1)) or 0
+  local spacing = g.cols > 1 and math.max(NODE_W + 44, (avail - NODE_W - 2 * MARGIN) / (g.cols - 1)) or 0
   local width = NODE_W + spacing * (g.cols - 1) + 2 * MARGIN
   view.fit = math.min(1, avail / width)
   content:SetSize(width, math.max(1, (g.height + TOP + 10)))
@@ -898,8 +898,8 @@ local function refresh()
     or frame.clore:IsShown() and frame.clore or frame.lancerB
   frame.status:SetPoint("RIGHT", action, "LEFT", -12, 0)
 
-  frame.status:SetText(ns.texteHV(market) .. (lectureSeule() and " · lecture seule : « Préparer » dans le fil pour changer"
-    or " · « + » décompose, « – » achète tout fait (surligné : ton choix)") .. " · molette : zoom, glisser : déplacer")
+  frame.status:SetText(ns.texteHV(market) .. (lectureSeule() and " · lecture seule (« Préparer » pour changer)"
+    or " · « + » décompose, « – » achète tout fait") .. " · molette : zoom, glisser : déplacer") -- coupée au bouton d'action
 end
 ns.refreshCraftWindow = refresh
 
