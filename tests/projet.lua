@@ -264,6 +264,14 @@ test("Réunir → Fabriquer quand tout est dans les sacs, pas à la banque ; Fin
     AzerothCommune.Conteneurs = function(garder) return garder("Backpack") and items(sacs) or {} end
     C_Item.GetItemCount = function(id) return sacs[id] or 0 end
     AzerothCommuneDB.chars[moi] = setmetatable({}, { __index = function(_, k) if k == "bank" then return items(banque) end return G.fiche and G.fiche[k] end })
+    -- La Fonte de l'étain : à apprendre, puis connue (une recette à apprendre retient en Réunir, comme un composant).
+    local connue, cle = false, nil
+    for k, r in pairs(AzerothCommune:Lire("base des recettes") or {}) do if r.output == 3576 then cle = k end end
+    G.Lire = AzerothCommune.Lire
+    AzerothCommune.Lire = function(self, t, ...)
+        if t == "recettes connues" then return { persos = connue and { [moi] = { Minage = { known = { [cle] = 1 } } } } or {} } end
+        return G.Lire(self, t, ...)
+    end
     local p = Composants.NouveauProjet({ name = "Barres d'étain", lines = { { id = 3576, qty = 4 } } })
     local ok, err = pcall(function()
         Composants.Ouvrir(p.id)
@@ -275,7 +283,10 @@ test("Réunir → Fabriquer quand tout est dans les sacs, pas à la banque ; Fin
         assertEquals("reunir", p.phase, "à la banque : on reste en Réunir")
         sacs, banque = { [2771] = 4 }, {}
         Composants.Rafraichir()
-        assertEquals("fabriquer", p.phase, "dans les sacs : Fabriquer tout seul")
+        assertEquals("reunir", p.phase, "dans les sacs, mais la recette à apprendre : on reste en Réunir")
+        connue = true
+        Composants.Rafraichir()
+        assertEquals("fabriquer", p.phase, "dans les sacs, recette connue : Fabriquer tout seul")
         assertTrue(ComposantsFrame:IsShown() and not ComposantsBesoinsFrame:IsShown(), "la grande vue")
         assertTrue(enCours(fil(ComposantsFrame, "Fabriquer")))
         sacs, banque = {}, { [2771] = 4 }
@@ -306,6 +317,7 @@ test("Réunir → Fabriquer quand tout est dans les sacs, pas à la banque ; Fin
         assertNil(Composants.Projet(p.id), "clos : supprimé")
     end)
     AzerothCommune.Conteneurs, C_Item.GetItemCount, AzerothCommuneDB.chars[moi] = G.Conteneurs, G.GetItemCount, G.fiche
+    AzerothCommune.Lire = G.Lire
     if Composants.Projet(p.id) then Composants.Supprimer(p.id) end
     if not ok then error(err, 0) end
 end) end)

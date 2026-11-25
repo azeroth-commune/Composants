@@ -16,7 +16,7 @@ Composants = {
     if not i then return nil end
     ns.db().courant = i
     local p = ns.supprimerProjet()
-    ns.refreshCraftWindow()
+    ns.refreshCraftWindow(); ns.refreshNeeds() -- la petite vue aussi : elle montrait peut-être le projet supprimé
     return p
   end,
   -- Lignes et choix de case : true, ou false et la raison (un projet tenu refuse ses lignes avec la raison de celui qui le

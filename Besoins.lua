@@ -8,21 +8,25 @@
 -- chaque ouverture de l'HV, la liste d'achats d'Auctionator « Besoins (Composants) » (#18), celle du projet affiché.
 local _, ns = ...
 
--- L'arbre des Besoins de p : options de la fenêtre (ou opts), ses apports Handshake ; les sacs y comptent toujours, même
--- « Déduire mes sacs » décoché (réunir, c'est les avoir dans les sacs).
+-- L'arbre des Besoins de p : options de la fenêtre (ou opts), ses apports Handshake ; les sacs, la banque et les autres
+-- persos y comptent toujours, options décochées ou non (réunir, c'est les avoir dans les sacs ; la banque et les autres
+-- persos disent où les trouver, plutôt que « à acheter »).
 function ns.besoinsArbre(p, opts)
   local o = {}
   for k, v in pairs(opts or ns.db().options) do o[k] = v end
-  o.bags = true
+  o.bags, o.bank, o.alts = true, true, true
   return ns.projetArbre(p, o, ns.apportsHandshake(p))
 end
 
--- Réuni (Phase, CONTEXT.md) : chaque ligne des Besoins est dans les sacs ; la banque et les autres persos ne comptent pas.
+-- Réuni (Phase, CONTEXT.md) : chaque ligne des Besoins est dans les sacs (la banque et les autres persos ne comptent pas)
+-- et aucune recette n'est à apprendre (il faut l'avoir pour fabriquer, comme les composants).
 -- C'est la condition de Réunir → Fabriquer (ns.avancerPhase, Projet.lua). ponytail: les contrats Handshake clos s'y
 -- ajouteront ici (Composants#26, #27).
 local function reuni(p, res)
   if #p.lines == 0 then return false end
-  for _, r in ipairs((ns.orderNeeds(res))) do if r.have[1] < r.required then return false end end
+  local rows, recettes = ns.orderNeeds(res)
+  if #recettes > 0 then return false end
+  for _, r in ipairs(rows) do if r.have[1] < r.required then return false end end
   return true
 end
 function ns.toutReuni(p, opts) return reuni(p, ns.besoinsArbre(p, opts)) end
@@ -54,7 +58,7 @@ end
 -- La liste d'achats d'Auctionator « Besoins (Composants) », réécrite à chaque ouverture de l'HV (son API remplace une
 -- liste du même nom) : on la lance, l'HV ne montre que ces objets, avec la quantité qui manque. Recherche exacte par le
 -- nom du client (en français). Sans Auctionator, rien. Une liste vide n'est pas créée, mais une ancienne est vidée.
--- Elle suit les Besoins du projet affiché (le Brouillon n'entre dans aucuns Besoins : rien). HV ouvert, elle suit aussi en
+-- Elle suit les Besoins du projet affiché (le Brouillon n'entre dans aucuns Besoins, ni un projet Fini : rien). HV ouvert, elle suit aussi en
 -- direct les modifications faites dans Composants (bascule, quantités, choix de case, autre projet affiché), seulement si
 -- elle change : Auctionator déplie la liste à chaque réécriture. Pas sur les
 -- changements de sacs : un achat en cours ne doit pas voir son écran sauter ; ils comptent à l'ouverture suivante.
@@ -65,7 +69,8 @@ function ns.pousserAuctionator(siChange)
   if not (api and api.CreateShoppingList and api.ConvertToSearchString) then return end
   local termes = {}
   local p = #ns.db().projets > 0 and ns.projetCourant() -- (sans projet, pas d'appel qui en créerait un vide)
-  local rows = p and not ns.estBrouillon(p) and ns.orderNeeds(ns.besoinsArbre(p)) or {}
+  -- Un projet Fini ne fait plus rien acheter, même ses objets vendus.
+  local rows = p and not ns.estBrouillon(p) and ns.phase(p) ~= "fini" and ns.orderNeeds(ns.besoinsArbre(p)) or {}
   for _, a in ipairs(ns.achatsHV(rows)) do
     local it = ns.items()[a.id]
     local nom = (it and it.name) or C_Item.GetItemInfo(a.id)

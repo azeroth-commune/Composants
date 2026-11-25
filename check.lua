@@ -155,6 +155,11 @@ do
   donnees({ hv = market, recettes = {}, sacs = { [3575] = 10 } })
   assert(ns.toutReuni(pa, { bags = false }), "les sacs comptent toujours pour réunir")
   assert(not ns.toutReuni(ns.nouveauProjet({ name = "vide" }), OPT), "un projet vide n'est pas réuni")
+  -- Une recette à apprendre : pas réuni (il faut l'avoir pour fabriquer, comme les composants).
+  local orderNeeds = ns.orderNeeds
+  ns.orderNeeds = function(res) return (orderNeeds(res)), { { name = "Fonte du fer", product = 3575 } } end
+  assert(not ns.toutReuni(pa, OPT), "une recette à apprendre : pas réuni")
+  ns.orderNeeds = orderNeeds
   -- Les anciennes SavedVariables : la liste ordonnée des Besoins est purgée.
   ComposantsDB.besoins = { pa.id, pb.id }
   assert(ns.db().besoins == nil, "la liste des Besoins d'avant : purgée")
@@ -219,6 +224,9 @@ do
   local autre = ns.nouveauProjet({ name = "Autre", lines = { { id = 3575, qty = 8 } } })
   ns.besoinsChanges()
   assert(ecritures == 3 and listes["Besoins (Composants)"][1]:find(";2$"), "l'autre projet : 8 − 6")
+  autre.phase = "fini" -- un projet Fini ne fait plus rien acheter
+  ns.besoinsChanges()
+  assert(ecritures == 4 and #listes["Besoins (Composants)"] == 0, "un projet Fini : liste vide")
   ns.ouvrirBrouillon()
   ns.besoinsChanges()
   assert(ecritures == 4 and #listes["Besoins (Composants)"] == 0, "le Brouillon : liste vide")
