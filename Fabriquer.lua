@@ -173,22 +173,34 @@ local OR = { 1.00, 0.82, 0.00 } -- le doré des textes du jeu
 -- la barre, les séparations ne se lisent plus (moins de 7 px par cran) : une barre continue.
 function ns.crans(n) return n <= 20 and n or 0 end
 
--- Le remplissage (0 à 1) : les fabrications finies, plus la part de l'incantation en cours, lue comme la barre
--- d'incantation du jeu (UnitCastingInfo : début et fin en ms). Secrète, absente ou une autre : rien, le cran se remplit
--- d'un coup à la fin (UNIT_SPELLCAST_SUCCEEDED). Aucune opération sur une valeur secrète : issecretvalue d'abord.
-function ns.avancement(e)
-  local part = 0
-  if UnitCastingInfo then
-    local _, _, _, debut, fin, _, _, _, sort = UnitCastingInfo("player")
-    local secret = issecretvalue and (issecretvalue(debut) or issecretvalue(fin) or issecretvalue(sort))
-    if not secret and type(debut) == "number" and type(fin) == "number" and sort == e.cle and fin > debut then
-      part = math.min(1, math.max(0, (GetTime() * 1000 - debut) / (fin - debut)))
-    end
+-- La part faite (0 à 1) de l'incantation en cours de la fabrication e, lue comme la barre d'incantation du jeu
+-- (UnitCastingInfo : début et fin en ms). Secrète, absente ou une autre : 0, le cran se remplit d'un coup à la fin
+-- (UNIT_SPELLCAST_SUCCEEDED). Aucune opération sur une valeur secrète : issecretvalue d'abord.
+local function partEnCours(e)
+  if not UnitCastingInfo then return 0 end
+  local _, _, _, debut, fin, _, _, _, sort = UnitCastingInfo("player")
+  local secret = issecretvalue and (issecretvalue(debut) or issecretvalue(fin) or issecretvalue(sort))
+  if not secret and type(debut) == "number" and type(fin) == "number" and sort == e.cle and fin > debut then
+    return math.min(1, math.max(0, (GetTime() * 1000 - debut) / (fin - debut)))
   end
-  return math.min(1, (e.fait + part) / e.n)
+  return 0
 end
 
--- La fabrication lancée par le bouton d'action, nil une fois finie : { id, cle, n fabrications, per objets chacune, fait }.
+-- Le remplissage (0 à 1) : les fabrications finies, plus la part de l'incantation en cours.
+function ns.avancement(e) return math.min(1, (e.fait + partEnCours(e)) / e.n) end
+
+-- Le compte à rebours de la fabrication en cours (la case, l'étape et la ligne du projet, chaque seconde, Fenetre.lua) :
+-- ce qu'il lui reste (fabrications restantes × cast, moins la part faite de l'incantation en cours) et ce qui est déjà
+-- écoulé de l'incantation en cours, en secondes ; nil sans temps connu (recette sans cast).
+-- ponytail: même source que la barre ; incantation secrète, le compte tombe d'un cast à chaque fabrication finie.
+function ns.resteEnCours(e)
+  if not (e and e.cast) then return nil end
+  local part = partEnCours(e)
+  return math.max(0, e.n - e.fait - part) * e.cast, part * e.cast
+end
+
+-- La fabrication lancée par le bouton d'action, nil une fois finie : { id, cle, n fabrications, per objets chacune, fait,
+-- cast (secondes, nil si inconnu) }.
 -- La case de son objet en dessine l'avancement (Fenetre.lua, sa barre).
 function ns.fabricationEnCours()
   -- ponytail: fin sans événement (le jeu refuse sans incantation) : 3 s sans fonte ni incantation, la fabrication est finie.
@@ -201,7 +213,7 @@ local function lancer(_, souris)
   if encours or not (f and f.etat == "pret") then return end -- en cours, ou « Ouvre » (la macro s'en charge)
   local n = souris == "RightButton" and f.n or 1 -- clic : une ; clic droit : tout ce que les sacs permettent
   encours = { cle = f.cle, id = f.id, nom = f.id and nom(f.id) or f.recette.name or "?",
-    per = f.id and math.max(1, f.recette.made_min or 1) or 1, n = n, fait = 0, t = GetTime() }
+    per = f.id and math.max(1, f.recette.made_min or 1) or 1, n = n, fait = 0, t = GetTime(), cast = f.recette.cast }
   C_TradeSkillUI.CraftRecipe(f.cle, n)
   C_Timer.After(3.5, ns.refreshCraftWindow)
   ns.refreshCraftWindow()

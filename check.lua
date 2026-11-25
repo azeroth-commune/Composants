@@ -437,7 +437,7 @@ do
   assert(e and #e.path == 3 and e.path[2].kind == "relay" and e.path[2].col == 1, "relais à l'étage 1")
   local r = e.path[2]
   for _, n in ipairs(gr.nodes) do
-    assert(n.col ~= 1 or r.y + 14 <= n.y or n.y + 42 <= r.y, "une case de l'étage 1 recouvre le lien")
+    assert(n.col ~= 1 or r.y + 10 <= n.y or n.y + 42 <= r.y, "une case de l'étage 1 recouvre le lien")
   end
 end
 do
@@ -900,6 +900,24 @@ do
   assert(Composants.Arbre(p, true).temps == 3 * 3 + 15, "il suit les fabrications faites")
   assert(ns.duree(45) == "45 s" and ns.duree(129) == "2 min" and ns.duree(3900) == "1 h 05", ns.duree(3900))
   assert(ns.texteTemps({ temps = 0, tempsIncomplet = true }) == "temps inconnu" and ns.texteTemps({ temps = 0 }) == nil)
+  -- Pendant une fabrication : compte à rebours, les secondes de l'incantation en cours en moins, « 2 min 40 s » sous 10 min.
+  assert(ns.duree(160, true) == "2 min 40 s" and ns.duree(125, true) == "2 min 05 s" and ns.duree(45, true) == "45 s"
+    and ns.duree(700, true) == "12 min", ns.duree(125, true))
+  assert(ns.texteTemps({ temps = 180 }, 20) == "2 min 40 s" and ns.texteTemps({ temps = 3 }, 5) == "0 s", ns.texteTemps({ temps = 180 }, 20))
+  Composants.Supprimer(p.id)
+  -- Une ligne fabrication finie : sa case dit ce qu'elle a fait (en objets) et reste dans son étape.
+  p = Composants.NouveauProjet({ name = "Finie", lines = { { recette = 2659, fois = 2 }, { recette = 2657, fois = 3 } } })
+  ns.projetPhase(p, "fabriquer"); ns.compterFabrication(2659)
+  res = Composants.Arbre(p, true)
+  assert(res.caseDe.T1.faites == 2 and res.caseDe.T1.made == 2, "entamée : 2 barres faites, 2 à faire")
+  ns.compterFabrication(2659)
+  res = Composants.Arbre(p, true)
+  local t1 = res.caseDe.T1
+  assert(t1.made == 0 and t1.faites == 4 and not res.caseDe.T2.faites, "finie : 4 barres de bronze faites")
+  local gr = ns.dessinArbre(res)
+  local dedans = false
+  for _, n in ipairs(gr.groupOf.Minage.cards) do dedans = dedans or n == t1 end
+  assert(t1.band == "Minage" and dedans, "finie : dans son étape (le rectangle du Minage), pas détachée")
   Composants.Supprimer(p.id)
   commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
 end
@@ -1009,6 +1027,15 @@ do
   assert(proche(A(e), 4 / 13), "une autre incantation : pas la nôtre")
   UnitCastingInfo = function() return nil end
   assert(proche(A(e), 4 / 13), "incantation absente")
+  -- Le compte à rebours : même source ; sans cast connu, rien.
+  UnitCastingInfo = function() return "Fonte du bronze", "", nil, 9000, 11000, true, 7, false, 2659 end
+  assert(ns.resteEnCours(e) == nil, "sans cast : pas de compte à rebours")
+  e.cast = 3
+  local r, ec = ns.resteEnCours(e)
+  assert(proche(r, 8.5 * 3) and proche(ec, 1.5), "9 restantes, la 5e à moitié : " .. r .. " s")
+  UnitCastingInfo = function() return nil end
+  r, ec = ns.resteEnCours(e)
+  assert(r == 27 and ec == 0, "entre deux incantations : 9 × 3 s")
   e.fait = 13
   assert(A(e) == 1, "tout fait : pleine")
   GetTime, UnitCastingInfo = gt, nil

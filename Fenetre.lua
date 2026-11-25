@@ -364,6 +364,8 @@ function ns.dessinArbre(res, confies)
   table.sort(sorted, function(x, y) return x.col < y.col end)
   for _, n in ipairs(sorted) do
     if blocOf[n] then n.band = blocOf[n]
+    elseif n.faites and n.made == 0 and n.recipe and res.blocDe[n.recipe.profession] and not (confies and confies[n.recipe.profession]) then
+      n.band = n.recipe.profession -- une ligne fabrication finie reste dans son étape
     else
       n.band = "reste"
       for _, p in ipairs(up[n]) do if p.band ~= nil then n.band = p.band break end end
@@ -374,8 +376,9 @@ function ns.dessinArbre(res, confies)
     grp.index, order[#order + 1] = i, grp.key
     local who = {}
     for _, c in ipairs(grp.crafters) do who[#who + 1] = ("%s %d (%d/%d)"):format(c.name, c.rank, c.known, #grp.recipes) end
-    grp.label = ("Étape %d · %s%s · %s"):format(grp.step, grp.key, grp.level > 0 and (" · niv. " .. grp.level .. " requis") or "",
-      #who > 0 and table.concat(who, ", ") or "personne de ta liste") .. (ns.texteTemps(grp) and (" · " .. ns.texteTemps(grp)) or "")
+    grp.labelSans = ("Étape %d · %s%s · %s"):format(grp.step, grp.key, grp.level > 0 and (" · niv. " .. grp.level .. " requis") or "",
+      #who > 0 and table.concat(who, ", ") or "personne de ta liste") -- sans son temps (le compte à rebours le récrit)
+    grp.label = grp.labelSans .. (ns.texteTemps(grp) and (" · " .. ns.texteTemps(grp)) or "")
     grp.cards = {}
     for _, n in ipairs(list) do if n.band == grp.key then grp.cards[#grp.cards + 1] = n end end
   end
@@ -540,6 +543,14 @@ local function peindreCran(c)
   c.cran:SetShown(x > 0)
   if x > 0 then c.cran:SetWidth(math.max(1, c.cranW * x)) end
 end
+local tic -- (plus bas, avec le dessin) : le compte à rebours récrit
+-- OnUpdate de la case de la fabrication en cours (seulement elle, seulement pendant ; rien quand la fenêtre est cachée) :
+-- le cran à chaque image, le compte à rebours une fois par seconde.
+local function enCours(c, dt)
+  peindreCran(c)
+  c.acc = (c.acc or 0) + (dt or 0)
+  if c.acc >= 1 then c.acc = 0; tic() end
+end
 
 -- Barre : sacs, banque, autres persos, à fabriquer, à acheter (rouge si sans prix). La case de la fabrication en cours
 -- (le bouton d'action) : sa barre telle qu'au lancement, la part « à fabriquer » découpée en crans, un par fabrication.
@@ -547,7 +558,8 @@ end
 local function bar(c, n)
   local e = ns.fabricationEnCours and ns.fabricationEnCours()
   e = e and e.id == n.id and e or nil
-  local parts = { n.have[1], n.have[2], n.have[3], n.made, n.need, n.apport, n.qty }
+  local fait = n.faites or 0 -- une ligne fabrication : ce qui est déjà fabriqué, en vert (toute verte une fois finie)
+  local parts = { n.have[1] + fait, n.have[2], n.have[3], n.made, n.need, n.apport, n.qty + fait }
   if e then e.barre = e.barre or parts; parts = e.barre end
   local qty = parts[7]
   local tints = { COLORS[1], COLORS[2], COLORS[3], COLORS.fabriquer, n.unpriced and COLORS.none or COLORS.buy, COLORS.apport }
@@ -590,11 +602,20 @@ local function bar(c, n)
   end
   c.cran:ClearAllPoints(); c.cran:SetPoint("BOTTOMLEFT", c.fab, 5)
   peindreCran(c)
-  c:SetScript("OnUpdate", e and peindreCran or nil)
+  c.acc = 0
+  c:SetScript("OnUpdate", e and enCours or nil)
 end
 
-local function subText(n)
-  local s = (n.kind ~= "target" or lectureSeule()) and ("×" .. n.qty) or "" -- en Préparer, la ligne a son champ de quantité
+local READY = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12|t" -- la coche verte des Besoins
+-- reste : la case de la fabrication en cours, ses secondes restantes (ns.resteEnCours) : son compte à rebours à la place
+-- du détail (qui revient à la fin).
+local function subText(n, reste)
+  if reste then return (" |cffe6a640%d à fab.|r · |cffffffffreste %s|r"):format(n.made, ns.duree(reste, true)) end
+  -- Une ligne fabrication finie : validée, avec ce qu'elle a fait ; entamée, ce qu'elle a fait avant ce qu'il reste.
+  local faites = n.faites and ("|cff59cc73%d faite%s|r"):format(n.faites, n.faites > 1 and "s" or "")
+  if faites and n.made == 0 then return (" %s %s"):format(READY, faites) end
+  local s = (n.kind ~= "target" or lectureSeule()) and ("×" .. n.qty + (n.faites or 0)) or "" -- en Préparer, la ligne a son champ de quantité
+  if faites then s = s .. " " .. faites end
   if stocked(n) > 0 then s = s .. (" |cff59cc73%d stock|r"):format(stocked(n)) end
   if n.made > 0 then s = s .. (n.unknown and " |cffe64d4d%d à fab.|r" or " |cffe6a640%d à fab.|r"):format(n.made) end
   if n.need > 0 then
@@ -640,18 +661,22 @@ local function curve(x1, y1, x2, y2, col, qty, thick)
 end
 
 local headers = {}
--- Une durée en clair : « 45 s », « 2 min », « 1 h 05 ».
+-- Une durée en clair : « 45 s », « 2 min », « 1 h 05 » ; vif (un compte à rebours) : les secondes sous 10 min, « 2 min 40 s ».
 -- ponytail: la même que celle de Maîtrise (Fenetre.lua) ; au socle au troisième usage.
-function ns.duree(s)
+function ns.duree(s, vif)
   s = math.floor(s + 0.5)
   if s < 60 then return s .. " s" end
+  if vif and s < 600 then return ("%d min %02d s"):format(math.floor(s / 60), s % 60) end
   if s < 3600 then return math.floor(s / 60 + 0.5) .. " min" end
   return ("%d h %02d"):format(math.floor(s / 3600), math.floor(s % 3600 / 60))
 end
 -- Le temps de fabrication d'un bloc ou du projet (t.temps, t.tempsIncomplet, Projet.lua) : « 2 min », « au moins 2 min » si
--- une recette n'a pas de temps connu, « temps inconnu » si aucune ; nil s'il n'y a plus rien à fabriquer.
-function ns.texteTemps(t)
-  if (t.temps or 0) > 0 then return (t.tempsIncomplet and "au moins " or "") .. ns.duree(t.temps) end
+-- une recette n'a pas de temps connu, « temps inconnu » si aucune ; nil s'il n'y a plus rien à fabriquer. ecoule (pendant
+-- une fabrication) : les secondes déjà passées sur l'incantation en cours, en moins, au format du compte à rebours.
+function ns.texteTemps(t, ecoule)
+  if (t.temps or 0) > 0 then
+    return (t.tempsIncomplet and "au moins " or "") .. ns.duree(math.max(0, t.temps - (ecoule or 0)), ecoule ~= nil)
+  end
   return t.tempsIncomplet and "temps inconnu" or nil
 end
 
@@ -662,6 +687,23 @@ local function header(i, x, text)
   h:SetPoint("TOPLEFT", content, "TOPLEFT", MARGIN + x, 0)
   h:SetText(text)
   h:Show()
+end
+
+-- Le compte à rebours de la fabrication en cours (ns.resteEnCours) : sur sa case, sur la ligne de son étape et sur celle du
+-- projet. vif = { case, bloc (le rectangle de son étape) }, posé par le dessin ; nil hors fabrication.
+local vif, ligneProjet
+tic = function()
+  local e = vif and ns.fabricationEnCours()
+  if not e then return end
+  local reste, ecoule = ns.resteEnCours(e)
+  if not reste then return end
+  vif.case.sub:SetText((subText(vif.case.node, reste):gsub("^ ", "")))
+  if ligneProjet then headers[1]:SetText(ligneProjet(ecoule)) end
+  local b = vif.bloc
+  if b then
+    local t = ns.texteTemps(b.grp, ecoule)
+    b.name:SetText(b.grp.labelSans .. (t and (" · " .. t) or ""))
+  end
 end
 
 local function refresh()
@@ -697,9 +739,12 @@ local function refresh()
     -- Valeur à l'HV de ce qu'on fabrique, et ce que ça rapporte quand le coût est complet ; rien sans prix.
     local v = res.valeur and (" · vaut %s à l'HV · %s"):format(ns.moneyShort(res.valeur),
       res.rapporte and "rapporte " .. ns.moneySigned(res.rapporte) or "|cffe64d4dcoût incomplet|r") or ""
-    local temps = ns.texteTemps(res)
-    temps = temps and (" · " .. temps .. ((res.temps or 0) > 0 and " de fabrication" or "")) or ""
-    header(1, 0, (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost .. v .. temps .. fini)
+    ligneProjet = function(ecoule) -- (le compte à rebours la récrit avec ecoule)
+      local temps = ns.texteTemps(res, ecoule)
+      temps = temps and (" · " .. temps .. ((res.temps or 0) > 0 and " de fabrication" or "")) or ""
+      return (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost .. v .. temps .. fini
+    end
+    header(1, 0, ligneProjet())
   end
   -- L'emplacement du projet entier : une bande à la suite de cette ligne ; confié, la seule case de l'arbre.
   zoneProjet, caseProjet = zoneProjet or newZone(), caseProjet or newZone(true)
@@ -740,13 +785,10 @@ local function refresh()
   end
   for i = #g.nodes + 1, #cards do cards[i]:Hide() end
   -- En Fabriquer, le bouton d'action en bas nomme la prochaine fabrication, sa case cerclée (Fabriquer.lua).
-  ns.rafraichirToutFabriquer(function(id)
+  local function carteDe(id)
     for i = 1, #g.nodes do if cards[i].node.id == id then return cards[i] end end
-  end)
-  if #roots > 0 then -- un « Étage » que la ligne du projet recouvrirait est sauté (la case de l'étape dit déjà où l'on est)
-    local libre = headers[1]:GetStringWidth() + 24 + (zoneProjet:IsShown() and zoneProjet:GetWidth() + 12 or 0)
-    for c = 1, g.cols - 1 do if spacing * c >= libre then header(c + 1, spacing * c, "Étage " .. c) end end
   end
+  ns.rafraichirToutFabriquer(carteDe)
 
   -- Un rectangle par artisan : toutes ses cases (et ce qui n'est pas fabriqué sous elles), à sa couleur, son nom
   -- au-dessus (et « recette à apprendre »). Rouge : personne de ta liste ne sait le faire.
@@ -814,6 +856,15 @@ local function refresh()
   end
   for i = usedBoxes + 1, #boxes do boxes[i]:Hide() end
   for i = usedZones + 1, #zonesCase do zonesCase[i]:Hide() end
+  -- Une fabrication en cours dont la case est dessinée : son compte à rebours, tout de suite puis chaque seconde (tic).
+  local e = ns.fabricationEnCours()
+  local ce = e and e.id and #roots > 0 and carteDe(e.id)
+  vif = ce and ce:IsShown() and { case = ce, bloc = boxOf[ce.node.band] } or nil
+  tic()
+  if #roots > 0 then -- un « Étage » que la ligne du projet recouvrirait est sauté (la case de l'étape dit déjà où l'on est)
+    local libre = headers[1]:GetStringWidth() + 24 + (zoneProjet:IsShown() and zoneProjet:GetWidth() + 12 or 0)
+    for c = 1, g.cols - 1 do if spacing * c >= libre then header(c + 1, spacing * c, "Étage " .. c) end end
+  end
 
   -- Chaque courbe part et arrive à sa propre hauteur sur le bord de la case, dans l'ordre des cases d'en face :
   -- pas de croisement au départ, et les quantités ne se marchent pas dessus.

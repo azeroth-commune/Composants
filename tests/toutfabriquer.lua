@@ -144,6 +144,16 @@ test("le bouton d'action : la prochaine fabrication, une ou tout, sa fenêtre, l
         UnitCastingInfo, issecretvalue = uci, secret
         assertTrue(okSecret, tostring(errSecret))
         assertTrue(w > 0.45 and w < 0.55, "secrète : 2 crans pleins, " .. w * 4)
+        -- Le compte à rebours, une fois par seconde : 2 fontes restantes × 3 s (Fonte de l'étain), moins la moitié de
+        -- l'incantation en cours, sur la case et sur la ligne du projet (le test ne change pas les sacs : 4 fontes, 12 s).
+        assertTrue(barre.sub:GetText():find("reste 6 s", 1, true) ~= nil, barre.sub:GetText())
+        UnitCastingInfo = cast
+        barre:GetScript("OnUpdate")(barre, 0.5)
+        assertTrue(barre.sub:GetText():find("reste 6 s", 1, true) ~= nil, "pas avant la seconde : " .. barre.sub:GetText())
+        barre:GetScript("OnUpdate")(barre, 0.5)
+        UnitCastingInfo = uci
+        assertTrue(barre.sub:GetText():find("reste 5 s", 1, true) ~= nil, barre.sub:GetText())
+        assertNotNil(ligne(content, "^Projet · .* · 11 s de fabrication"), "la ligne du projet suit")
         -- Les 4 fondues : les barres dans les sacs, tout est fait ; ça se lit sur la ligne du projet.
         sacs = { [3576] = 4 }
         fonte(2)
@@ -294,6 +304,8 @@ test("une ligne fabrication compte ses fabrications faites, même lancées par l
         assertEquals(1, p.faites[3304])
         assertTrue(b:GetText():find(" ×3$") ~= nil, "3 à faire : " .. b:GetText())
         assertEquals(3, cible().node.qty, "la case : 3 barres à faire")
+        local sub = cible().sub:GetText()
+        assertTrue(sub:find("^×4 |cff59cc731 faite|r ") ~= nil and sub:find("3 à fab.", 1, true) ~= nil, "entamée : " .. sub)
         -- Le temps de fabrication suit : 3 fontes × 3 s (Fonte de l'étain, réserve du socle).
         local projetL
         for _, r in ipairs({ cible():GetParent():GetRegions() }) do
@@ -311,6 +323,10 @@ test("une ligne fabrication compte ses fabrications faites, même lancées par l
         ecouler(4)
         assertEquals(4, p.faites[3304])
         assertEquals("fini", p.phase, "les 4 faites : Fini")
+        sub = cible().sub:GetText()
+        assertTrue(sub:find("ReadyCheck-Ready", 1, true) ~= nil and sub:find("4 faites", 1, true) ~= nil
+            and not sub:find("×"), "finie : validée, son compte, " .. sub)
+        assertTrue(cible().seg[1]:IsShown() and cible().seg[1]:GetWidth() > 140, "finie : la barre toute verte")
         FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "fonte", 3304)
         assertEquals(4, p.faites[3304], "rien de plus à compter")
     end)
