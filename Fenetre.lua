@@ -59,7 +59,13 @@ function ns.partConfiee(p, res)
   if entier then for _, n in ipairs(res.cases) do part[n] = true end
   else part = select(3, ns.reduire(res, confies)) end
   local donne = ns.demander(p, "aDonner", p) or {}
-  for n in pairs(part) do if donne[n.id] then part[n] = nil end end
+  -- Ce que le joueur donne, et ce qu'il lui faut pour le faire lui-même (sa case entière) : à réunir, comme les autres.
+  local function rendre(n)
+    if not part[n] then return end
+    part[n] = nil
+    for _, k in ipairs(n.children or {}) do rendre(k) end
+  end
+  for n in pairs(part) do if donne[n.id] then rendre(n) end end
   return part
 end
 -- Tout ce que le fournisseur a pris en charge pour p est-il arrivé ? Vrai sans lui (ou sans ce champ) ; une erreur chez

@@ -517,6 +517,9 @@ do
   donne = { [5500] = true }
   l = lignes()
   assert(l[5500] and l[5500].required == 3, "la perle donnée à la forge : une ligne des Besoins (il faut l'avoir sur soi)")
+  confier, donne = { [true] = true }, { [2841] = true }
+  l = lignes()
+  assert(l[2770] and l[2771], "le bronze donné, que je fais : son cuivre et son étain restent des Besoins")
   confier, donne = { [true] = true }, nil
   assert(next((lignes())) == nil, "le projet entier confié : rien à réunir")
   -- Tout réuni (rien à réunir) mais pas clos : on reste en Réunir ; clos : Fabriquer. Fini attend clos aussi.
