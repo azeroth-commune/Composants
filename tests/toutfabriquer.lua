@@ -215,3 +215,86 @@ test("le bouton d'action : la prochaine fabrication, une ou tout, sa fenêtre, l
     if not ok then error(err, 0) end
 end)
 
+
+-- Une ligne fabrication (une tranche de Maîtrise) compte ses fabrications faites : par le bouton d'action ou par « Créer » du
+-- jeu (UNIT_SPELLCAST_SUCCEEDED), l'arbre, le bouton et les Besoins n'en demandent plus que le reste (bug du 25/11 : après
+-- 4 brassards, les barres consommées revenaient dans l'arbre et le bouton disait toujours ×14).
+test("une ligne fabrication compte ses fabrications faites, même lancées par le jeu", function()
+    if not ProfessionsFrame then C_AddOns.LoadAddOn("Blizzard_Professions") end
+    local T, garde = C_TradeSkillUI, {}
+    local sacs = { [2771] = 4 }
+    local faux = {
+        GetBaseProfessionInfo = function() return { professionName = "Minage", skillLevel = 1, maxSkillLevel = 75 } end,
+        IsTradeSkillLinked = function() return false end,
+        IsTradeSkillGuild = function() return false end,
+        IsNPCCrafting = function() return false end,
+        GetRecipeInfo = function(k) return { recipeID = k, learned = true } end,
+        GetCraftableCount = function(k) return k == 3304 and (sacs[2771] or 0) or 0 end,
+        GetRecipeRequirements = function() return {} end,
+        CraftRecipe = function() end,
+    }
+    for n, fn in pairs(faux) do garde[n], T[n] = T[n], fn end
+    local G = { Conteneurs = AzerothCommune.Conteneurs, GetItemCount = C_Item.GetItemCount, unlearned = ComposantsDB.options.unlearned }
+    AzerothCommune.Conteneurs = function(garder)
+        local items = {}
+        for id, n in pairs(sacs) do items[#items + 1] = { id = id, count = n } end
+        return garder("Backpack") and { b = { items = items } } or {}
+    end
+    C_Item.GetItemCount = function(id) return sacs[id] or 0 end
+    ComposantsDB.options.unlearned = true
+    local p = Composants.NouveauProjet({ name = "Tranche d'étain" })
+    Composants.Tenir(p, "tenu par le test", { { recette = 3304, fois = 4 } })
+    local function cible()
+        local function chercher(f)
+            for _, c in ipairs({ f:GetChildren() }) do
+                if c.node and c.node.kind == "target" and c:IsShown() then return c end
+                local r = chercher(c)
+                if r then return r end
+            end
+        end
+        return chercher(ComposantsFrame)
+    end
+    local ok, err = pcall(function()
+        Composants.Ouvrir(p.id)
+        ProfessionsFrame:Show()
+        FireEvent("TRADE_SKILL_SHOW")
+        ecouler(1)
+        FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "fonte", 3304)
+        assertNil(p.faites, "en Préparer : rien de compté")
+        Composants.Tenir(p, nil)
+        -- Fabriquer par le fil.
+        for _, c in ipairs({ ComposantsFrame:GetChildren() }) do
+            if c:GetObjectType() == "Button" and c:GetText() == "Fabriquer" then c:Click() break end
+        end
+        ecouler(1)
+        assertEquals("fabriquer", p.phase)
+        local b = ComposantsToutFabriquer
+        assertTrue(b:IsShown() and b:GetText():find(" ×4$") ~= nil, b:GetText())
+        -- Une fonte par « Créer » du jeu : 3 à faire, l'arbre et le bouton suivent.
+        FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "fonte", 3304)
+        ecouler(1)
+        assertEquals(1, p.faites[3304])
+        assertTrue(b:GetText():find(" ×3$") ~= nil, "3 à faire : " .. b:GetText())
+        assertEquals(3, cible().node.qty, "la case : 3 barres à faire")
+        -- Par le bouton d'action (clic droit : les 3) : chaque fonte réussie compte.
+        b:Click("RightButton")
+        FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "fonte", 3304)
+        FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "fonte", 3304)
+        ecouler(4)
+        assertEquals(3, p.faites[3304])
+        assertTrue(b:GetText():find(" ×1$") ~= nil, "1 à faire : " .. b:GetText())
+        FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "fonte", 3304)
+        ecouler(4)
+        assertEquals(4, p.faites[3304])
+        assertEquals("fini", p.phase, "les 4 faites : Fini")
+        FireEvent("UNIT_SPELLCAST_SUCCEEDED", "player", "fonte", 3304)
+        assertEquals(4, p.faites[3304], "rien de plus à compter")
+    end)
+    for n in pairs(faux) do T[n] = garde[n] end
+    AzerothCommune.Conteneurs, C_Item.GetItemCount = G.Conteneurs, G.GetItemCount
+    ComposantsDB.options.unlearned = G.unlearned
+    Composants.Supprimer(p.id)
+    ProfessionsFrame:Hide()
+    if ComposantsFrame then ComposantsFrame:Hide() end
+    if not ok then error(err, 0) end
+end)

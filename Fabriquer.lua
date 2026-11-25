@@ -295,6 +295,8 @@ ev:SetScript("OnEvent", function(_, e, _, _, sort)
     if tf then tf:Hide(); tf:ClearAllPoints(); tf:SetParent(UIParent) end
     return
   end
+  -- Une fabrication réussie compte pour son projet, lancée d'ici ou par « Créer » du jeu (ns.compterFabrication, Projet.lua).
+  if e == "UNIT_SPELLCAST_SUCCEEDED" then ns.compterFabrication(sort) end
   if encours and sort == encours.cle then -- l'avancement de la fabrication lancée
     if e == "UNIT_SPELLCAST_SUCCEEDED" then
       encours.fait, encours.t = encours.fait + 1, GetTime()

@@ -5,7 +5,8 @@
 -- fenêtre (Fenetre.lua) ne fait que dessiner.
 -- Enregistrés dans ComposantsDB.projets[i] = { id (son identité), name, lines = { { id, qty } ou { recette, fois } (une
 --   fabrication, CONTEXT.md) }, choix = { [id] = "fabriquer" | "acheter" }, tenu (la raison de celui qui tient ses lignes),
---   phase ("reunir", "fabriquer" ou "fini" ; nil = Préparer, ainsi que tout projet d'avant les phases), created } ;
+--   phase ("reunir", "fabriquer" ou "fini" ; nil = Préparer, ainsi que tout projet d'avant les phases), faites = { [recette] =
+--   fois déjà faites } (ns.compterFabrication), created } ;
 --   ComposantsDB.courant = le rang du projet affiché ; ComposantsDB.brouillon = le Brouillon (un projet hors de la liste).
 local _, ns = ...
 
@@ -70,6 +71,7 @@ function ns.projetPhase(p, phase)
   signaler(p, "phase")
 end
 local function enPreparer(p) p.phase = nil end
+local oublierFaites -- (plus bas, avec les fabrications faites)
 
 -- Lancer (CONTEXT.md) : le projet passe en Réunir et le renvoie. Sur le Brouillon : un vrai projet en Réunir, avec ses lignes
 -- et ses choix de case, nommé d'après sa première ligne, et un Brouillon vide le remplace ; nil si le Brouillon est vide.
@@ -152,8 +154,43 @@ end
 -- il est rendu. De nouvelles lignes (une tranche recalculée) le remettent en Préparer ; le rendre ne change pas sa phase.
 function ns.projetTenir(p, raison, lignes)
   p.tenu = raison
-  if lignes then p.lines = lignes; enPreparer(p) end
+  if lignes then p.lines, p.faites = lignes, nil; enPreparer(p) end
   signaler(p, "tenu")
+end
+
+-- Les fabrications déjà faites d'un projet lancé (p.faites[recette]) : une ligne fabrication n'en demande plus que
+-- fois − faites (ns.projetArbre), partout où l'arbre se calcule (arbre, Besoins, coût, prochaine fabrication, Fini). Chaque
+-- incantation réussie d'une recette (UNIT_SPELLCAST_SUCCEEDED du joueur, son sort = la clé de la recette, Fabriquer.lua), par
+-- le bouton d'action ou par « Créer » / « Créer tout » du jeu, compte pour UN projet : le projet affiché s'il est lancé
+-- (Réunir ou Fabriquer) et qu'il lui reste cette fabrication à faire, sinon le premier de la liste dans ce cas ; aucun :
+-- rien. Oubliées quand ses lignes changent (Tenir avec des lignes, Quantite, Retirer de cette ligne), pas en revenant à
+-- Préparer par le fil. Rend le projet compté, ou nil.
+-- ponytail: une recette sur une seule ligne par projet (Maîtrise additionne les étapes d'une même recette).
+local function resteAFaire(p, recette)
+  local ph = ns.phase(p)
+  if ph ~= "reunir" and ph ~= "fabriquer" then return false end
+  for _, l in ipairs(p.lines) do
+    if l.recette == recette then return (p.faites and p.faites[recette] or 0) < l.fois end
+  end
+  return false
+end
+function ns.compterFabrication(recette)
+  if not recette then return nil end
+  local p = not surBrouillon and #db().projets > 0 and ns.projetCourant() or nil
+  if not (p and resteAFaire(p, recette)) then
+    p = nil
+    for _, q in ipairs(db().projets) do if resteAFaire(q, recette) then p = q break end end
+  end
+  if not p then return nil end
+  p.faites = p.faites or {}
+  p.faites[recette] = (p.faites[recette] or 0) + 1
+  return p
+end
+oublierFaites = function(p, recette)
+  if recette and p.faites then
+    p.faites[recette] = nil
+    if not next(p.faites) then p.faites = nil end
+  end
 end
 
 -- « Peut-on modifier quoi sur ce projet ? » (la fenêtre grise d'après elle) : true, ou false, raison.
@@ -180,6 +217,7 @@ function ns.projetQuantite(p, i, qty)
   if not ok then return false, raison end
   if not p.lines[i] then return false, "cette ligne n'existe pas" end
   if qty and qty >= 1 then p.lines[i][p.lines[i].recette and "fois" or "qty"] = math.min(qty, 9999) end -- fabrication : fois
+  oublierFaites(p, p.lines[i].recette)
   enPreparer(p)
   signaler(p, "lignes")
   return true
@@ -188,6 +226,7 @@ end
 function ns.projetRetirer(p, i)
   local ok, raison = ns.projetPeut(p, "lignes")
   if not ok then return false, raison end
+  oublierFaites(p, p.lines[i] and p.lines[i].recette)
   table.remove(p.lines, i)
   enPreparer(p)
   signaler(p, "lignes")
@@ -424,11 +463,14 @@ local function valeurHV(roots, market, total, incomplete)
   if #roots == 0 or not market then return nil end
   local valeur, depot, d = 0, 0, market.depot or {}
   for _, r in ipairs(roots) do
-    local l = r.id and market.items[r.id]
-    if not (l and l.min) then return nil end
-    valeur = valeur + l.min * r.qty
-    depot = depot + math.max(d.min or 1, math.floor(ns.prixRevente(r.id) * (d.rate24 or 0.20) * r.qty))
+    if r.qty > 0 then -- une fabrication toute faite ne compte plus
+      local l = r.id and market.items[r.id]
+      if not (l and l.min) then return nil end
+      valeur = valeur + l.min * r.qty
+      depot = depot + math.max(d.min or 1, math.floor(ns.prixRevente(r.id) * (d.rate24 or 0.20) * r.qty))
+    end
   end
+  if valeur == 0 then return nil end
   return valeur, not incomplete and math.floor(valeur * (1 - PART_HV)) - depot - total or nil
 end
 
@@ -440,6 +482,8 @@ end
 function ns.projetArbre(p, opts, apports)
   local roots, market, stock, vendors, total, incomplete = {}, nil, nil, nil, 0, false
   for i, l in ipairs(p.lines) do -- les prix marchands lus une fois pour tout le calcul
+    local faites = l.recette and p.faites and p.faites[l.recette]
+    if faites then l = { recette = l.recette, fois = math.max(0, l.fois - faites) } end -- ce qu'il reste à faire
     roots[i], market, stock, vendors = ns.craftPlan(l, opts or db().options, stock, apports, p.choix, vendors)
     total = total + (roots[i].cost or 0)
     incomplete = incomplete or roots[i].incomplete or not roots[i].cost

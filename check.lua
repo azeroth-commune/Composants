@@ -836,9 +836,37 @@ do
   assert(poussiere and poussiere.required == 3 and poussiere.have[1] == 1 and poussiere.have[3] == 1 and poussiere.need == 1,
     "la poussière : 1 en sac, 1 chez un autre perso, 1 à acheter")
   assert(besoin(b, 2770).required == 5 and besoin(b, 3576).required == 5, "le minerai de cuivre et l'étain")
+  -- Les fabrications faites (ns.compterFabrication, sur UNIT_SPELLCAST_SUCCEEDED) : seulement un projet lancé ; chacune pour
+  -- un seul projet, l'affiché d'abord, sinon le premier de la liste à qui il en reste ; la ligne n'en demande plus que le reste.
+  assert(ns.compterFabrication(2659) == nil and not p.faites, "en Préparer : rien de compté")
+  local autre = Composants.NouveauProjet({ name = "Autre", lines = { { recette = 2659, fois = 1 } } }) -- l'affiché
+  ns.projetPhase(p, "fabriquer"); ns.projetPhase(autre, "reunir")
+  assert(ns.compterFabrication(2659) == autre and autre.faites[2659] == 1 and not p.faites, "l'affiché d'abord")
+  assert(ns.projetFini(ns.projetArbre(autre)), "toutes faites : fini, ses composants ne sont plus demandés")
+  assert(ns.projetArbre(autre).valeur == nil, "toutes faites : plus de valeur à l'HV")
+  assert(ns.compterFabrication(2659) == p and p.faites[2659] == 1 and autre.faites[2659] == 1, "plus rien à l'affiché : le suivant")
+  ns.compterFabrication(2659); ns.compterFabrication(2659)
+  local reste = Composants.Arbre(p, true)
+  assert(reste.caseDe.T1.made == 4 and reste.caseDe.T1.crafts == 2 and reste.caseDe.I2840.qty == 2, "3 faites sur 5 : 2 fontes, 4 barres")
+  assert(reste.total == 2 * 2 + 2 * 10 + 3 * 50, "le coût du reste seulement")
+  assert(besoin(ns.besoinsArbre(p, { bags = true, unlearned = true }), 2770).required == 2, "les Besoins du reste")
+  assert(ns.allerPhase(p, "preparer") and p.faites[2659] == 3, "revenir à Préparer par le fil : rien d'oublié")
+  assert(ns.compterFabrication(2659) == nil, "en Préparer : rien de compté")
+  ns.projetPhase(p, "fabriquer")
+  ns.compterFabrication(2659); ns.compterFabrication(2659)
+  assert(ns.compterFabrication(2659) == nil and p.faites[2659] == 5, "les 5 faites : plus rien à compter")
+  reste = Composants.Arbre(p, true)
+  assert(reste.caseDe.T1.made == 0 and not reste.caseDe.I2840 and reste.caseDe.I10940.qty == 3, "la fonte finie ; l'enchantement reste")
+  Composants.Tenir(p, "tenu par Maîtrise", { { recette = 2659, fois = 5 }, { recette = 7420, fois = 3 } })
+  assert(not p.faites and p.phase == nil, "nouvelles lignes : les faites oubliées, Préparer")
+  autre.phase = nil
+  Composants.Supprimer(autre.id)
   -- Lâché, une ligne fabrication change de nombre de fois.
   Composants.Tenir(p, nil)
   assert(Composants.Quantite(p, 1, 7) and p.lines[1].fois == 7 and p.lines[1].qty == nil, "lâché : le nombre de fois se change")
+  ns.projetPhase(p, "fabriquer"); ns.compterFabrication(2659); ns.compterFabrication(7420)
+  assert(Composants.Quantite(p, 1, 6) and p.faites[2659] == nil and p.faites[7420] == 1, "Quantite : les faites de cette ligne oubliées")
+  assert(Composants.Retirer(p, 2) and p.faites == nil, "Retirer : celles de la ligne retirée")
   commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
 end
 print("Composants : lignes fabrication d'un projet tenu OK")
