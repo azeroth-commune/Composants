@@ -17,7 +17,7 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
   n'importe où le met au Brouillon (en tête de la colonne des projets ; « Lancer » en fait un projet, clic droit « Vider le
   Brouillon » le vide ; on n'y commande rien). Sous le Brouillon, l'entrée **Transformations** porte ce que rapportent de
   plus les matières des sacs transformées (« Transformations · +3 po 12 », grisé « · rien ») : les fontes, rouleaux
-  d'étoffe et peaux traitées que le personnage connecté connaît, quand vendre le bout de la chaîne rapporte plus que vendre
+  d'étoffe, peaux traitées, silex, pierres à aiguiser, cailloux et boucle en fer que le personnage connecté connaît, quand vendre le bout de la chaîne rapporte plus que vendre
   la matière (part de l'HV et dépôt déduits, ingrédients en plus au prix d'achat) ; l'ouvrir recalcule ses Fabrications
   (une ligne retirée revient), « Lancer » en fait un projet « Transformations 26/11 ». Bouton de minicarte et réglages : ceux, communs, d'Azeroth Commune ; les
   options du calcul (déduire les sacs, la banque, les autres persos ; compter les recettes pas apprises) sont sur la page

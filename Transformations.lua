@@ -13,10 +13,17 @@
 local _, ns = ...
 local lib = AzerothCommune
 
--- Les familles de transformations, liste fermée par métier et motif du nom de la recette : les fontes (toutes les barres),
--- les rouleaux d'étoffe, les peaux traitées. Pas les transmutations, poudres, silex, essences ni teintures.
+-- Les familles de transformations, liste fermée par métier et motifs du nom de la recette : les fontes (toutes les barres),
+-- les rouleaux d'étoffe, les peaux traitées, et à la Forge les « Composants » et « Pierres d'arme » du jeu (silex et
+-- pierres à aiguiser, cailloux, boucle en fer). Pas les transmutations, poudres, essences ni teintures.
 -- ponytail: les noms du client français ; dans une autre langue, aucune transformation. Une liste d'IDs de recettes si ça arrive.
-local FAMILLES = { Minage = "^Fonte", Couture = "^Rouleau", ["Travail du cuir"] = "traitée$" }
+local FAMILLES = {
+  Minage = { "^Fonte" }, Couture = { "^Rouleau" }, ["Travail du cuir"] = { "traitée$" },
+  Forge = { "^Silex à aiguiser", "^Pierre à aiguiser", "^Caillou", "^Boucle en fer" },
+}
+local function enFamille(r, metier)
+  for _, motif in ipairs(FAMILLES[r.profession or metier] or {}) do if (r.name or ""):find(motif) then return true end end
+end
 
 -- Les transformations que le personnage connecté connaît : { { cle, r } }, dans un ordre fixe.
 local function connues()
@@ -24,8 +31,7 @@ local function connues()
   for metier, p in pairs(ns.knownRecipes()[UnitGUID("player")] or {}) do
     for cle in pairs(p.known or {}) do
       local r = recettes[cle]
-      local motif = r and FAMILLES[r.profession or metier]
-      if motif and r.output and r.reagents and (r.name or ""):find(motif) then t[#t + 1] = { cle = cle, r = r } end
+      if r and r.output and r.reagents and enFamille(r, metier) then t[#t + 1] = { cle = cle, r = r } end
     end
   end
   table.sort(t, function(a, b) return tostring(a.cle) < tostring(b.cle) end)

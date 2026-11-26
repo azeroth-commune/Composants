@@ -1090,6 +1090,9 @@ do
     [3569] = { name = "Fonte de l'acier", output = 3859, profession = "Minage", reagents = { { id = 3575, qty = 1 }, { id = 3857, qty = 1 } } },
     [3816] = { name = "Peau légère traitée", output = 4231, profession = "Travail du cuir", reagents = { { id = 783, qty = 1 }, { id = 4289, qty = 1 } } },
     [11479] = { name = "Transmutation : fer en or", output = 3577, profession = "Alchimie", reagents = { { id = 3575, qty = 1 } } },
+    [2660] = { name = "Pierre à aiguiser brute", output = 2862, profession = "Forge", reagents = { { id = 2835, qty = 1 } } },
+    [3320] = { name = "Silex à aiguiser brut", output = 3470, profession = "Forge", reagents = { { id = 2835, qty = 2 } } },
+    [2668] = { name = "Jambières grossières en bronze", output = 2865, profession = "Forge", reagents = { { id = 2835, qty = 1 } } },
   }
   local vendeurs = AzerothCommuneDB.vendors
   AzerothCommuneDB.vendors = { [1] = { items = { { id = 3857, price = 500, stack = 1 }, { id = 4289, price = 50, stack = 1 } } } }
@@ -1140,6 +1143,13 @@ do
   donnees({ hv = { [3575] = prix(10), [3577] = prix(5000) }, recettes = RECETTES, sacs = { [3575] = 5 } })
   AzerothCommuneDB.chars[MOI].recipes = { Alchimie = { rank = 300, known = { [11479] = true } } }
   assert(#ns.calculTransformations().lignes == 0, "une transmutation n'est pas une transformation")
+
+  -- La Forge : pierres à aiguiser et silex en sont (au meilleur gain par pierre), pas les jambières (même faites de pierre).
+  local PIERRES = { 2660, 3320, 2668 }
+  assert(lignes(poser({ [2835] = 10, [2862] = 30, [3470] = 50, [2865] = 9999 }, { [2835] = 20 }, PIERRES)) == "2660×20",
+    "pierre à aiguiser : 28,5 par pierre contre 23,75 en silex")
+  assert(lignes(poser({ [2835] = 10, [2862] = 30, [3470] = 100, [2865] = 9999 }, { [2835] = 20 }, PIERRES)) == "3320×10",
+    "silex : deux pierres chacun")
 
   -- Chaîne : cuivre et étain dans les sacs, le bronze rapporte plus que les barres → une Fabrication, Fonte du bronze ; l'arbre
   -- y met Fonte du cuivre et Fonte de l'étain dans les bonnes quantités, avant.

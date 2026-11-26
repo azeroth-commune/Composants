@@ -23,7 +23,7 @@ Une ligne « recette × nombre de fois » au lieu de « objet × quantité » : 
 _Avoid_: craft, ligne forcée
 
 **Transformation**:
-Une recette qui change une matière de récolte en matière d'artisanat : les fontes (toutes les barres, bronze et acier compris), les rouleaux d'étoffe, les peaux traitées. Certaines demandent un ingrédient en plus (charbon, sel, la barre d'étain du bronze), qui devient un Besoin comme un autre. Les transmutations, avec leur temps de recharge, n'en sont pas. Transformer remplit un projet ordinaire de Fabrications ; ce n'est pas une sorte de projet.
+Une recette qui change une matière de récolte en matière d'artisanat : les fontes (toutes les barres, bronze et acier compris), les rouleaux d'étoffe, les peaux traitées, et à la Forge les silex et pierres à aiguiser, les cailloux et la boucle en fer (les « Composants » et « Pierres d'arme » du jeu). Certaines demandent un ingrédient en plus (charbon, sel, la barre d'étain du bronze), qui devient un Besoin comme un autre. Les transmutations, avec leur temps de recharge, n'en sont pas. Transformer remplit un projet ordinaire de Fabrications ; ce n'est pas une sorte de projet.
 _Avoid_: transfo (à l'écrit), raffinage, conversion
 
 **Transformations** (l'entrée):
