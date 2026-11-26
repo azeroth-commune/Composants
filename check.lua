@@ -1111,6 +1111,20 @@ do
   local r = poser({ [2772] = 100, [3575] = 200 }, { [2772] = 58 }, { 3307 })
   assert(lignes(r) == "3307×58", lignes(r))
   assert(r.gain == 58 * (190 - 95), "gain : " .. r.gain)
+  -- L'entrée : ouverte, recalculée (une ligne retirée revient) ; Lancer en fait « Transformations <date> » et une entrée vide
+  -- la remplace ; le Brouillon n'est pas touché.
+  local brouillon = ns.brouillon()
+  brouillon.lines = { { id = 2841, qty = 3 } }
+  local tr = ns.ouvrirPassage("transformations")
+  assert(ns.estPassage(tr) == "transformations" and ns.projetCourant() == tr and #tr.lines == 1 and tr.lines[1].fois == 58, "ouverte, recalculée")
+  for _, q in ipairs(Composants.Projets()) do assert(q ~= tr, "l'entrée dans la liste des projets") end
+  ns.projetRetirer(tr, 1)
+  assert(#tr.lines == 0 and #ns.ouvrirPassage("transformations").lines == 1, "une ligne retirée revient")
+  local lancee = ns.lancer(tr)
+  assert(lancee.name == "Transformations " .. os.date("%d/%m") and ns.phase(lancee) == "reunir" and lancee.lines[1].recette == 3307, lancee.name)
+  assert(#tr.lines == 0 and #brouillon.lines == 1 and brouillon.lines[1].id == 2841, "entrée vidée, Brouillon intact")
+  Composants.Supprimer(lancee.id)
+  ns.viderBrouillon()
   -- Le minerai plus cher que la barre : rien ; un objet de la chaîne sans prix : rien.
   assert(lignes(poser({ [2772] = 300, [3575] = 200 }, { [2772] = 58 }, { 3307 })) == "", "minerai plus cher : rien")
   assert(lignes(poser({ [2772] = 100 }, { [2772] = 58 }, { 3307 })) == "", "barre sans prix : rien")

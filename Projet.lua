@@ -41,11 +41,12 @@ function ns.nouveauProjet(p)
   return p
 end
 
--- Les projets de passage (CONTEXT.md : Brouillon) : chacun unique et toujours là, en tête de la colonne des projets, hors
+-- Les projets de passage (CONTEXT.md : Brouillon, Transformations) : chacun unique et toujours là, en tête de la colonne des projets, hors
 -- de leur liste (identité 0, -1… jamais donnée à un projet). On n'y commande rien, ils n'entrent dans aucuns Besoins et
 -- restent en Préparer ; Lancer en fait un vrai projet et un passage vide le remplace. En afficher un ne change pas le rang
--- du projet qu'on quitte. Le Brouillon : tout Ctrl+clic droit y atterrit.
-local PASSAGES = { { cle = "brouillon", name = "Brouillon", id = 0 } }
+-- du projet qu'on quitte. Le Brouillon : tout Ctrl+clic droit y atterrit. Transformations : ses lignes sont recalculées
+-- à chaque ouverture (Transformations.lua), une ligne retirée revient.
+local PASSAGES = { { cle = "brouillon", name = "Brouillon", id = 0 }, { cle = "transformations", name = "Transformations", id = -1 } }
 function ns.passage(cle)
   local d = db()
   for _, s in ipairs(PASSAGES) do
@@ -67,7 +68,12 @@ function ns.estPassage(p)
 end
 function ns.ouvrirPassage(cle)
   surPassage = cle
-  return ns.passage(cle)
+  local p = ns.passage(cle)
+  if cle == "transformations" then
+    p.lines, p.choix = ns.calculTransformations().lignes, nil
+    signaler(p, "lignes")
+  end
+  return p
 end
 function ns.viderPassage(p)
   p.lines, p.choix = {}, nil
@@ -95,7 +101,7 @@ local oublierFaites -- (plus bas, avec les fabrications faites)
 
 -- Lancer (CONTEXT.md) : le projet passe en Réunir et le renvoie. Sur un projet de passage : un vrai projet en Réunir, avec
 -- ses lignes et ses choix de case, et un passage vide le remplace ; nil s'il est vide. Le Brouillon le nomme d'après sa
--- première ligne. Le fournisseur de l'emplacement peut le refuser (ns.refusLancer) : nil et sa raison, le projet reste en
+-- première ligne, Transformations « Transformations 26/11 ». Le fournisseur de l'emplacement peut le refuser (ns.refusLancer) : nil et sa raison, le projet reste en
 -- Préparer.
 function ns.lancer(p)
   local refus = ns.refusLancer(p)
@@ -109,6 +115,8 @@ function ns.lancer(p)
     local it = l.id and ns.items()[l.id] -- le nom du catalogue d'abord : le lien d'un objet pas en cache dit « Unknown »
     nom = it and it.name or l.id and ns.itemLabel(l.id) or (ns.recipes()[l.recette] or {}).name
     nom = nom and (nom:match("%[(.-)%]") or nom)
+  else
+    nom = p.name .. " " .. date("%d/%m")
   end
   local q = ns.nouveauProjet({ name = nom, lines = p.lines, choix = p.choix, phase = "reunir" })
   ns.viderPassage(p)

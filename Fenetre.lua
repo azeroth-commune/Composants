@@ -730,7 +730,9 @@ local function refresh()
 
   for _, h in ipairs(headers) do h:Hide() end
   if #roots == 0 then
-    header(1, 0, ns.estBrouillon(projet()) and "|cff999999Brouillon vide : Ctrl+clic droit sur un objet n'importe où l'y met ; Lancer en fait un projet.|r"
+    local vide = { brouillon = "Brouillon vide : Ctrl+clic droit sur un objet n'importe où l'y met ; Lancer en fait un projet.",
+      transformations = "Rien de rentable à transformer dans tes sacs (tes recettes, le dernier cours de l'HV)." }
+    header(1, 0, vide[ns.estPassage(projet())] and "|cff999999" .. vide[ns.estPassage(projet())] .. "|r"
       or "|cff999999Cherche un objet (ou dépose-le sur la recherche) ; Ctrl+clic droit sur un objet le met au Brouillon.|r")
   else
     local o = projet()
@@ -1084,6 +1086,9 @@ local function colonne(parent)
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:AddLine(self.nom:GetText())
       if self.p.tenu then GameTooltip:AddLine(self.p.tenu, 1, 0.82, 0, true) end
+      if ns.estPassage(self.p) == "transformations" then
+        GameTooltip:AddLine("Les matières de tes sacs transformées avec tes recettes, quand ça rapporte plus que les vendre telles quelles (part de l'HV, dépôt et ingrédients en plus déduits).", 1, 1, 1, true)
+      end
       GameTooltip:AddLine("Clic : l'ouvrir", 0.6, 0.6, 0.6)
       local droit = ns.estBrouillon(self.p) and "le vider" or not ns.estPassage(self.p) and "Renommer, Supprimer"
       if droit then GameTooltip:AddLine("Clic droit : " .. droit, 0.6, 0.6, 0.6) end
@@ -1107,6 +1112,12 @@ local function colonne(parent)
       b.nom:SetJustifyH("LEFT") -- (SetFontObject le remet au centre)
       b.nom:SetText(p.name or "?")
       local n = #p.lines
+      if passage == "transformations" then -- ce qu'elle rapporte, d'après les sacs et l'HV de maintenant (pas ses lignes d'avant)
+        local c = ns.calculTransformations()
+        n = #c.lignes
+        b.nom:SetFontObject(n > 0 and "GameFontNormalSmall" or "GameFontDisableSmall")
+        b.nom:SetText(p.name .. " · " .. (n > 0 and ns.moneySigned(c.gain) or "rien"))
+      end
       b.phase:SetText(passage and (n == 0 and "vide" or (n .. (n > 1 and " lignes" or " ligne"))) or PHASE_NOM[ns.phase(p)])
       b.fond:SetShown(p == cur)
       b.trait:SetShown(p == cur)
