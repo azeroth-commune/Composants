@@ -56,7 +56,7 @@ Un objet des Besoins que le joueur compte récolter plutôt qu'acheter ; il le d
 _Avoid_: farm, choix de récolte
 
 **Valeur à l'HV** (d'un projet):
-Ce que valent à l'HV les objets que le projet fabrique, ses objets de premier rang (la racine de chaque ligne), au prix le plus bas de l'HV × leur quantité ; avec un coût complet, ce que ça **rapporte** : la valeur moins la part de l'HV (5 %) et le dépôt, moins le coût. Sans prix pour l'un de ces objets, rien ; avec un coût incomplet, la valeur seule.
+Ce que valent à l'HV les objets que le projet fabrique, ses objets de premier rang (la racine de chaque ligne), au prix le plus bas de l'HV × leur quantité ; avec un coût complet, ce que ça **rapporte** : la valeur moins la part de l'HV (5 %) et le dépôt, moins le coût, et moins ce que vaut ce que le projet prend dans le stock (sacs, banque, autres personnages) : ce qu'on en tirerait à l'HV, à défaut son prix d'achat ; rien n'est gratuit (décidé le 26/11/2026 : sur un projet de Transformations, c'est le gain de la transformation, pas la vente entière). Sans prix pour l'un de ces objets, rien ; avec un coût incomplet, la valeur seule.
 _Avoid_: bénéfice, marge, profit
 
 ### L'arbre

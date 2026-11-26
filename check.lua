@@ -1121,6 +1121,10 @@ do
   local tr = ns.ouvrirPassage("transformations")
   assert(ns.estPassage(tr) == "transformations" and ns.projetCourant() == tr and #tr.lines == 1 and tr.lines[1].fois == 58, "ouverte, recalculée")
   for _, q in ipairs(Composants.Projets()) do assert(q ~= tr, "l'entrée dans la liste des projets") end
+  -- Son « rapporte » (Valeur à l'HV) compte le minerai pris dans les sacs à sa vente : le gain de la transformation, moins
+  -- le dépôt minimal d'1 pc (la revente au marchand vaut 0 ici).
+  local va = ns.projetArbre(tr, { bags = true })
+  assert(va.rapporte == r.gain - 1, "rapporte = gain de transformation : " .. tostring(va.rapporte) .. " / " .. r.gain)
   ns.projetRetirer(tr, 1)
   assert(#tr.lines == 0 and #ns.ouvrirPassage("transformations").lines == 1, "une ligne retirée revient")
   local lancee = ns.lancer(tr)
@@ -1192,6 +1196,10 @@ do
   Composants.Supprimer(p.id)
   r = poser(ACIER, { [2772] = 20, [3857] = 20 }, { 3307, 3569 })
   assert(lignes(r) == "3569×20" and r.gain == 20 * 950 - 20 * 500 - 20 * 95, "charbon des sacs : toujours au prix d'achat")
+  local pa = Composants.NouveauProjet({ name = "Acier", lines = r.lignes })
+  local va2 = ns.projetArbre(pa, { bags = true })
+  assert(va2.rapporte == r.gain - 1, "rapporte : charbon des sacs au prix d'achat, minerai à sa vente : " .. tostring(va2.rapporte))
+  Composants.Supprimer(pa.id)
   p = Composants.NouveauProjet({ name = "Acier", lines = r.lignes, phase = "reunir" })
   assert(ns.avancerPhase(p) and ns.phase(p) == "fabriquer", "le charbon dans les sacs : directement en Fabriquer")
   Composants.Supprimer(p.id)

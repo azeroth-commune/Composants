@@ -506,10 +506,11 @@ end
 -- Valeur à l'HV (CONTEXT.md) des objets que fabriquent ces lignes : chacun au prix le plus bas de l'HV × sa quantité ; nil
 -- dès qu'un objet n'a pas de prix (ou qu'une fabrication ne produit pas d'objet). Avec le coût complet, ce que ça rapporte :
 -- la valeur moins la part de l'HV (5 %) et le dépôt 24 h (taux mesuré par le socle, 20 % de la revente au marchand sinon,
--- au moins 1 pc par objet), compté comme perdu, comme le Négoce ; moins le coût.
+-- au moins 1 pc par objet), compté comme perdu, comme le Négoce ; moins le coût, et moins ce que vaut ce que le projet prend
+-- dans le stock (valeurStock) : rien n'est gratuit, le minerai des sacs se serait vendu.
 -- ponytail: au prix le plus bas, pas 1 pc dessous ni l'écoulement ; le Négoce le fait pour ses lots.
 local PART_HV = 0.05
-local function valeurHV(roots, market, total, incomplete)
+local function valeurHV(roots, market, total, incomplete, stock)
   if #roots == 0 or not market then return nil end
   local valeur, depot, d = 0, 0, market.depot or {}
   for _, r in ipairs(roots) do
@@ -521,7 +522,7 @@ local function valeurHV(roots, market, total, incomplete)
     end
   end
   if valeur == 0 then return nil end
-  return valeur, not incomplete and math.floor(valeur * (1 - PART_HV)) - depot - total or nil
+  return valeur, not incomplete and stock and math.floor(valeur * (1 - PART_HV)) - depot - total - stock or nil
 end
 -- Ce que rapporte la vente d'un objet id à l'HV, par objet, au même compte : son prix le plus bas, moins la part de l'HV et
 -- le dépôt 24 h (sans le minimum d'1 pc) ; nil sans prix. Pour les Transformations (Transformations.lua).
@@ -529,6 +530,24 @@ function ns.venteHV(id, market)
   local l = market and market.items[id]
   if not (l and l.min) then return nil end
   return l.min * (1 - PART_HV) - ns.prixRevente(id) * ((market.depot or {}).rate24 or 0.20)
+end
+
+-- Ce que vaut ce que l'arbre prend dans le stock (sacs, banque, autres persos) : ce qu'on en tirerait en le vendant à l'HV
+-- (ns.venteHV), à défaut son prix d'achat (le charbon, chez le marchand) ; nil si un objet pris n'a ni l'un ni l'autre.
+local function valeurStock(roots, market, vendors)
+  local total = 0
+  local function visite(n)
+    local h = n.have
+    local pris = h and (h[1] + h[2] + h[3]) or 0
+    if pris > 0 and total then
+      local v = ns.venteHV(n.id, market)
+      v = v and v * pris or AzerothCommune:PrixAchat(n.id, pris, market and market.items, vendors)
+      total = v and total + v or nil
+    end
+    for _, c in ipairs(n.parts or {}) do visite(c) end
+  end
+  for _, r in ipairs(roots) do visite(r) end
+  return total and math.floor(total)
 end
 
 -- L'arbre d'un projet, comme s'il était seul (tout le stock pour lui, ses lignes l'une après l'autre sur ce stock). p : un
@@ -548,7 +567,7 @@ function ns.projetArbre(p, opts, apports)
   end
   local res = cases(roots, p.choix or {})
   res.roots, res.total, res.incomplete, res.market = roots, total, incomplete, market
-  res.valeur, res.rapporte = valeurHV(roots, market, total, incomplete)
+  res.valeur, res.rapporte = valeurHV(roots, market, total, incomplete, valeurStock(roots, market, vendors))
   blocs(res, ns.crafters())
   return res
 end
