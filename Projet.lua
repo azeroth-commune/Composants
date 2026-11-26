@@ -515,6 +515,13 @@ local function valeurHV(roots, market, total, incomplete)
   if valeur == 0 then return nil end
   return valeur, not incomplete and math.floor(valeur * (1 - PART_HV)) - depot - total or nil
 end
+-- Ce que rapporte la vente d'un objet id à l'HV, par objet, au même compte : son prix le plus bas, moins la part de l'HV et
+-- le dépôt 24 h (sans le minimum d'1 pc) ; nil sans prix. Pour les Transformations (Transformations.lua).
+function ns.venteHV(id, market)
+  local l = market and market.items[id]
+  if not (l and l.min) then return nil end
+  return l.min * (1 - PART_HV) - ns.prixRevente(id) * ((market.depot or {}).rate24 or 0.20)
+end
 
 -- L'arbre d'un projet, comme s'il était seul (tout le stock pour lui, ses lignes l'une après l'autre sur ce stock). p : un
 -- projet, ou toute table { lines, choix } (un autre add-on y passe une part du projet). opts : options de stock et de recettes
