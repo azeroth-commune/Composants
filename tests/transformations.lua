@@ -76,7 +76,7 @@ test("l'entrée Transformations : sous le Brouillon, ce qu'elle rapporte ; ouver
         lance = ComposantsDB.projets[#ComposantsDB.projets]
         assertEquals("Transformations " .. date("%d/%m"), lance.name)
         assertEquals(3307, lance.lines[1].recette)
-        assertTrue(lance.phase ~= nil, "lancé (le minerai est dans les sacs : déjà en Fabriquer)")
+        assertEquals("fabriquer", lance.phase, "le minerai est dans les sacs : déjà en Fabriquer")
         assertEquals(0, #t.lines, "une entrée vide la remplace")
         assertEquals(1, #ComposantsDB.brouillon.lines, "le Brouillon pas touché")
         assertEquals(2841, ComposantsDB.brouillon.lines[1].id)

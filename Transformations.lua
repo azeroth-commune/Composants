@@ -7,6 +7,9 @@
 -- (ses ingrédients en plus aussi : tels quels, ou par une fonte d'une étape, le minerai d'étain pour la barre) ; ce qui
 -- manque est à acheter (un Besoin du projet lancé). Le calcul rend une Fabrication par bout de chaîne : l'arbre du projet
 -- y met les étapes d'avant (les fontes du cuivre et de l'étain sous celle du bronze), dans l'ordre.
+-- ponytail: l'arbre puise d'abord dans le stock déductible (banque, autres persos) : des barres intermédiaires en banque
+-- y remplacent la fonte du minerai des sacs (le projet dit d'aller les chercher). Forcer « fabriquer » sur les cases
+-- intermédiaires, en séparant les barres déjà dans les sacs, si le cas gêne en jeu.
 local _, ns = ...
 local lib = AzerothCommune
 

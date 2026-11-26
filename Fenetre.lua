@@ -1116,6 +1116,7 @@ local function colonne(parent)
         local c = ns.calculTransformations()
         n = #c.lignes
         b.nom:SetFontObject(n > 0 and "GameFontNormalSmall" or "GameFontDisableSmall")
+        b.nom:SetJustifyH("LEFT")
         b.nom:SetText(p.name .. " · " .. (n > 0 and ns.moneySigned(c.gain) or "rien"))
       end
       b.phase:SetText(passage and (n == 0 and "vide" or (n .. (n > 1 and " lignes" or " ligne"))) or PHASE_NOM[ns.phase(p)])
@@ -1248,7 +1249,9 @@ local function build()
     frame.title:SetText(projet().name or "")
     frame.syncFil()
     frame.syncColonne()
-    for _, w in ipairs(ajout) do w:SetShown(ph == "preparer") end
+    -- Pas de ligne d'ajout sur l'entrée Transformations : recalculée à chaque ouverture, un objet ajouté y disparaîtrait.
+    local ajoutable = ph == "preparer" and ns.estPassage(projet()) ~= "transformations"
+    for _, w in ipairs(ajout) do w:SetShown(ajoutable) end
     indiquer()
     local refus = ph == "preparer" and ns.refusLancer(projet())
     lancerB:SetText(refus and ("Lancer (%s)"):format(refus) or "Lancer")
