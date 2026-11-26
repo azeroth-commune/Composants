@@ -22,6 +22,14 @@ _Avoid_: valider, démarrer
 Une ligne « recette × nombre de fois » au lieu de « objet × quantité » : sa case racine est toujours fabriquée (jamais achetée toute faite), et une recette sans objet produit (un enchantement) n'a pour cases que ses composants ; c'est ainsi qu'une tranche de montée tient son projet.
 _Avoid_: craft, ligne forcée
 
+**Transformation**:
+Une recette qui change une matière de récolte en matière d'artisanat : les fontes (toutes les barres, bronze et acier compris), les rouleaux d'étoffe, les peaux traitées. Certaines demandent un ingrédient en plus (charbon, sel, la barre d'étain du bronze), qui devient un Besoin comme un autre. Les transmutations, avec leur temps de recharge, n'en sont pas. Transformer remplit un projet ordinaire de Fabrications ; ce n'est pas une sorte de projet.
+_Avoid_: transfo (à l'écrit), raffinage, conversion
+
+**Transformations** (l'entrée):
+Le second projet de passage, unique et toujours là, sous le Brouillon dans la colonne des projets, qui porte ce qu'il rapporte (« Transformations · +3 po 12 ») : en Préparer, une Fabrication par transformation rentable des matières des sacs, avec les recettes que le personnage connaît, recalculée à chaque ouverture (une ligne retirée revient). Rentable : vendre le bout de la chaîne (minerai → barre → bronze) rapporte plus que vendre la matière telle quelle, ingrédients en plus comptés au prix d'achat ; sans prix, rien. Lancer en fait un vrai projet et une entrée vide le remplace, comme le Brouillon.
+_Avoid_: projet de transfo, suggestions
+
 **Prochaine fabrication** (d'un projet):
 Ce qu'il faut fabriquer maintenant : dans l'ordre de l'arbre, du bas vers le haut (les barres avant l'armure), la première
 fabrication que les composants des sacs permettent, faite d'un coup dans la fenêtre de son métier. En phase Fabriquer, elle
