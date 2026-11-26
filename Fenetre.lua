@@ -29,9 +29,9 @@ local COLORS = {
 }
 
 local frame, content, scroll
--- Le fournisseur des emplacements (API.lua), si ce projet en a : jamais le Brouillon (on n'y commande rien), qui ne lui est
--- donc jamais passé.
-local function F(p) return not ns.estBrouillon(p) and ns.fournisseur or nil end
+-- Le fournisseur des emplacements (API.lua), si ce projet en a : jamais un projet de passage (on n'y commande rien), qui ne
+-- lui est donc jamais passé.
+local function F(p) return not ns.estPassage(p) and ns.fournisseur or nil end
 -- Appeler le fournisseur : une erreur chez lui ne casse pas la fenêtre (elle est signalée).
 local function appel(fn, ...)
   local ok, r = pcall(fn, ...)
@@ -742,7 +742,7 @@ local function refresh()
     ligneProjet = function(ecoule) -- (le compte à rebours la récrit avec ecoule)
       local temps = ns.texteTemps(res, ecoule)
       temps = temps and (" · " .. temps .. ((res.temps or 0) > 0 and " de fabrication" or "")) or ""
-      return (ns.estBrouillon(o) and "Brouillon · " or "Projet · ") .. cost .. v .. temps .. fini
+      return (ns.estPassage(o) and o.name or "Projet") .. " · " .. cost .. v .. temps .. fini
     end
     header(1, 0, ligneProjet())
   end
@@ -988,7 +988,7 @@ end
 local function searchBox(qty) return AzerothCommune.RechercheObjets(frame, qty, track) end
 
 -- Supprimer un projet (clic droit dans la colonne, « Clore ») : le projet affiché le reste, sinon le suivant de la liste ;
--- plus aucun projet : le Brouillon (pas un projet vide créé pour rien). Signalé (QuandChange) : un autre add-on y range ce
+-- plus aucun projet : le Brouillon (pas un projet vide créé pour rien) ; un projet de passage affiché le reste. Signalé (QuandChange) : un autre add-on y range ce
 -- qu'il doit.
 local function supprimer(p)
   local affiche = projet()
@@ -996,15 +996,16 @@ local function supprimer(p)
   if not i then return end
   ns.db().courant = i
   ns.supprimerProjet()
-  if ns.estBrouillon(affiche) or #ns.db().projets == 0 then ns.ouvrirBrouillon()
+  if ns.estPassage(affiche) then ns.ouvrirPassage(ns.estPassage(affiche))
+  elseif #ns.db().projets == 0 then ns.ouvrirBrouillon()
   elseif affiche ~= p then ns.ouvrirProjet(affiche.id) end
   ns.montrerVue()
 end
 
--- La colonne des projets (skill ui-addon : une colonne toujours visible, pas un menu déroulant) : le Brouillon en tête,
--- puis chaque projet avec sa phase, celui affiché surligné ; clic = l'ouvrir dans la vue de sa phase ; clic droit =
--- Renommer (un champ sur l'entrée : Entrée garde, Échap annule), Supprimer ; le Brouillon : Vider. Elle défile au-delà de
--- sa hauteur. Rend la fonction qui la met à jour.
+-- La colonne des projets (skill ui-addon : une colonne toujours visible, pas un menu déroulant) : les projets de passage en
+-- tête (le Brouillon), puis chaque projet avec sa phase, celui affiché surligné ; clic = l'ouvrir dans la vue de sa phase ;
+-- clic droit = Renommer (un champ sur l'entrée : Entrée garde, Échap annule), Supprimer ; le Brouillon : Vider ; un autre
+-- projet de passage : rien. Elle défile au-delà de sa hauteur. Rend la fonction qui la met à jour.
 local PHASE_NOM = { preparer = "Préparer", reunir = "Réunir", fabriquer = "Fabriquer", fini = "|cff59cc73Fini|r" }
 local ENTREE_H = 34
 local function colonne(parent)
@@ -1034,6 +1035,7 @@ local function colonne(parent)
   nomB:SetScript("OnEditFocusLost", fermer)
   local function menu(b)
     local p = b.p
+    if ns.estPassage(p) and not ns.estBrouillon(p) then return end -- (les autres passages : rien à y faire)
     MenuUtil.CreateContextMenu(b, function(_, root)
       if ns.estBrouillon(p) then
         root:CreateButton("Vider le Brouillon", function() ns.viderBrouillon(); ns.montrerVue() end)
@@ -1075,7 +1077,7 @@ local function colonne(parent)
     b.phase:SetJustifyH("LEFT")
     b:SetScript("OnClick", function(self, souris)
       if souris == "RightButton" then return menu(self) end
-      if ns.estBrouillon(self.p) then ns.ouvrirBrouillon() else ns.ouvrirProjet(self.p.id) end
+      if ns.estPassage(self.p) then ns.ouvrirPassage(ns.estPassage(self.p)) else ns.ouvrirProjet(self.p.id) end
       ns.montrerVue()
     end)
     b:SetScript("OnEnter", function(self)
@@ -1083,7 +1085,8 @@ local function colonne(parent)
       GameTooltip:AddLine(self.nom:GetText())
       if self.p.tenu then GameTooltip:AddLine(self.p.tenu, 1, 0.82, 0, true) end
       GameTooltip:AddLine("Clic : l'ouvrir", 0.6, 0.6, 0.6)
-      GameTooltip:AddLine(ns.estBrouillon(self.p) and "Clic droit : le vider" or "Clic droit : Renommer, Supprimer", 0.6, 0.6, 0.6)
+      local droit = ns.estBrouillon(self.p) and "le vider" or not ns.estPassage(self.p) and "Renommer, Supprimer"
+      if droit then GameTooltip:AddLine("Clic droit : " .. droit, 0.6, 0.6, 0.6) end
       GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1091,19 +1094,20 @@ local function colonne(parent)
     return b
   end
   return function()
-    local tous, cur = { ns.brouillon() }, projet()
+    local tous, cur = ns.passages(), projet()
+    local npassages = #tous
     for _, p in ipairs(ns.db().projets) do tous[#tous + 1] = p end
     for i, p in ipairs(tous) do
       local b = entrees[i] or entree(i)
-      local brouillon = ns.estBrouillon(p)
+      local passage = ns.estPassage(p)
       b.p = p
       b:ClearAllPoints()
-      b:SetPoint("TOPLEFT", 0, -((i - 1) * ENTREE_H + (i > 1 and 8 or 0))) -- le Brouillon un peu à part
-      b.nom:SetFontObject(brouillon and "GameFontNormalSmall" or "GameFontHighlightSmall")
+      b:SetPoint("TOPLEFT", 0, -((i - 1) * ENTREE_H + (i > npassages and 8 or 0))) -- les passages un peu à part
+      b.nom:SetFontObject(passage and "GameFontNormalSmall" or "GameFontHighlightSmall")
       b.nom:SetJustifyH("LEFT") -- (SetFontObject le remet au centre)
-      b.nom:SetText(brouillon and "Brouillon" or (p.name or "?"))
+      b.nom:SetText(p.name or "?")
       local n = #p.lines
-      b.phase:SetText(brouillon and (n == 0 and "vide" or (n .. (n > 1 and " lignes" or " ligne"))) or PHASE_NOM[ns.phase(p)])
+      b.phase:SetText(passage and (n == 0 and "vide" or (n .. (n > 1 and " lignes" or " ligne"))) or PHASE_NOM[ns.phase(p)])
       b.fond:SetShown(p == cur)
       b.trait:SetShown(p == cur)
       b:Show()
@@ -1152,7 +1156,7 @@ local function build()
     b:SetScript("OnClick", onClick)
     return b
   end
-  local function surBrouillon() return ns.estBrouillon(projet()) end
+  local function surPassage() return ns.estPassage(projet()) end
   frame.syncColonne = colonne(frame)
 
   -- L'en-tête : le nom du projet dans la barre de titre, le fil dessous. On renomme par la colonne (clic droit).
@@ -1185,7 +1189,7 @@ local function build()
   frame.action:SetSize(1, 24)
   frame.action:SetPoint("BOTTOMRIGHT", -28, 10) -- à gauche de la poignée
   -- Lancer (CONTEXT.md) : le projet passe à Réunir, la petite vue (ses Besoins) prend la place de la grande. Sur le
-  -- Brouillon, un vrai projet naît (le Brouillon se vide). Grisé sans ligne ; refusé par le fournisseur de l'emplacement :
+  -- Brouillon (un projet de passage), un vrai projet naît (le passage se vide). Grisé sans ligne ; refusé par le fournisseur de l'emplacement :
   -- grisé, « Lancer (<sa raison>) ».
   local lancerB = button("Lancer", 140, function()
     if not ns.lancer(projet()) then return end
@@ -1202,7 +1206,7 @@ local function build()
     elseif refus then GameTooltip:AddLine("Pas encore : " .. refus, 0.9, 0.3, 0.3, true)
     else
       GameTooltip:AddLine("Le projet passe à Réunir : ses Besoins seuls ; tout dans les sacs, Fabriquer vient tout seul.", 1, 1, 1, true)
-      if surBrouillon() then GameTooltip:AddLine("Le Brouillon devient un projet, un Brouillon vide le remplace.", 0.6, 0.6, 0.6, true) end
+      if surPassage() then GameTooltip:AddLine(projet().name .. " devient un projet, une entrée vide le remplace.", 0.6, 0.6, 0.6, true) end
     end
     GameTooltip:Show()
   end)
@@ -1229,8 +1233,8 @@ local function build()
   -- Le projet affiché : son nom, le fil, la colonne ; la ligne d'ajout en Préparer ; le bouton d'action de la phase ; le
   -- dessin commence sous ce qui est montré.
   frame.syncProjet = function()
-    local b, ph = surBrouillon(), ns.phase(projet())
-    frame.title:SetText(b and "Brouillon" or projet().name or "")
+    local ph = ns.phase(projet())
+    frame.title:SetText(projet().name or "")
     frame.syncFil()
     frame.syncColonne()
     for _, w in ipairs(ajout) do w:SetShown(ph == "preparer") end
