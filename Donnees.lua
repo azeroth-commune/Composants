@@ -88,8 +88,8 @@ function ns.rememberItem(id) return lib.RetenirObjet(id, nomsDeSession) end
 function ns.itemLabel(id) return lib.NomObjet(id, ns.items(), nomsDeSession) end
 function ns.findItem(text) return lib.TrouverObjet(text, ns.items(), ns.recipes()) end
 
--- ComposantsDB : { projets, projetSeq, courant, brouillon (Projet.lua), recolte (Besoins.lua), options (de calcul),
---   minimap_angle (le socle) }. La liste ordonnée des projets mis dans les Besoins (besoins) est partie avec les phases :
+-- ComposantsDB : { projets, projetSeq, courant, brouillon et transformations (les projets de passage, Projet.lua),
+--   recolte (Besoins.lua), options (de calcul), minimap_angle (le socle) }. La liste ordonnée des projets mis dans les Besoins (besoins) est partie avec les phases :
 --   purgée (chaque projet a ses Besoins).
 local OPTIONS = { bags = true, bank = true, alts = false, unlearned = false }
 function ns.db()

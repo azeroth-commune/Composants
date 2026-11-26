@@ -7,11 +7,12 @@
 --   fabrication, CONTEXT.md) }, choix = { [id] = "fabriquer" | "acheter" }, tenu (la raison de celui qui tient ses lignes),
 --   phase ("reunir", "fabriquer" ou "fini" ; nil = Préparer, ainsi que tout projet d'avant les phases), faites = { [recette] =
 --   fois déjà faites } (ns.compterFabrication), created } ;
---   ComposantsDB.courant = le rang du projet affiché ; ComposantsDB.brouillon = le Brouillon (un projet hors de la liste).
+--   ComposantsDB.courant = le rang du projet affiché ; ComposantsDB[<clé>] = un projet de passage (le Brouillon : .brouillon),
+--   hors de la liste.
 local _, ns = ...
 
 local db = function() return ns.db() end
-local surBrouillon = false -- le Brouillon est-il affiché (au lieu du projet de rang ComposantsDB.courant) ?
+local surPassage -- la clé du projet de passage affiché (au lieu du projet de rang ComposantsDB.courant), ou nil
 
 -- « Ce projet a changé » : fn(p, quoi) après chaque modification, quoi = "nouveau", "lignes", "choix", "nom", "tenu",
 -- "phase" ou "supprime" (p : le projet qui vient de partir). Un rappel qui plante ne prive pas les autres.
@@ -35,35 +36,60 @@ function ns.nouveauProjet(p)
   d.projetSeq = (d.projetSeq or 0) + 1
   p.id = d.projetSeq
   table.insert(d.projets, p)
-  d.courant, surBrouillon = #d.projets, false
+  d.courant, surPassage = #d.projets, nil
   signaler(p, "nouveau")
   return p
 end
 
--- Le Brouillon (CONTEXT.md) : un projet de passage, unique et toujours là, hors de la liste des projets (identité 0, jamais
--- donnée à un projet). Tout Ctrl+clic droit y atterrit ; on n'y commande rien. Affiché par la colonne des projets ; l'afficher ne
--- change pas le rang du projet qu'on quitte.
-function ns.brouillon()
+-- Les projets de passage (CONTEXT.md : Brouillon, Transformations) : chacun unique et toujours là, en tête de la colonne des projets, hors
+-- de leur liste (identité 0, -1… jamais donnée à un projet). On n'y commande rien, ils n'entrent dans aucuns Besoins et
+-- restent en Préparer ; Lancer en fait un vrai projet et un passage vide le remplace. En afficher un ne change pas le rang
+-- du projet qu'on quitte. Le Brouillon : tout Ctrl+clic droit y atterrit. Transformations : ses lignes sont recalculées
+-- à chaque ouverture (Transformations.lua), une ligne retirée revient.
+local PASSAGES = { { cle = "brouillon", name = "Brouillon", id = 0 }, { cle = "transformations", name = "Transformations", id = -1 } }
+function ns.passage(cle)
   local d = db()
-  d.brouillon = d.brouillon or { id = 0, name = "Brouillon", lines = {} }
-  return d.brouillon
+  for _, s in ipairs(PASSAGES) do
+    if s.cle == cle then
+      d[cle] = d[cle] or { id = s.id, name = s.name, lines = {} }
+      return d[cle]
+    end
+  end
 end
-function ns.estBrouillon(p) return p ~= nil and p == db().brouillon end
-function ns.ouvrirBrouillon()
-  surBrouillon = true
-  return ns.brouillon()
+function ns.passages() -- dans l'ordre de la colonne
+  local t = {}
+  for i, s in ipairs(PASSAGES) do t[i] = ns.passage(s.cle) end
+  return t
 end
-function ns.viderBrouillon()
-  local b = ns.brouillon()
-  b.lines, b.choix = {}, nil
-  signaler(b, "lignes")
+-- La clé du passage p (« brouillon »…), nil pour un vrai projet.
+function ns.estPassage(p)
+  if p == nil then return nil end
+  for _, s in ipairs(PASSAGES) do if p == db()[s.cle] then return s.cle end end
 end
+function ns.ouvrirPassage(cle)
+  surPassage = cle
+  local p = ns.passage(cle)
+  if cle == "transformations" then
+    p.lines, p.choix = ns.calculTransformations().lignes, nil
+    signaler(p, "lignes")
+  end
+  return p
+end
+function ns.viderPassage(p)
+  p.lines, p.choix = {}, nil
+  signaler(p, "lignes")
+end
+function ns.brouillon() return ns.passage("brouillon") end
+function ns.estBrouillon(p) return ns.estPassage(p) == "brouillon" end
+function ns.ouvrirBrouillon() return ns.ouvrirPassage("brouillon") end
+function ns.viderBrouillon() ns.viderPassage(ns.brouillon()) end
 
 ---------------------------------------------------------------------------------------------------
 -- Les phases (CONTEXT.md, Phase) : Préparer (nil) → Réunir → Fabriquer → Fini. Lancer fait passer de Préparer à Réunir ;
 -- Réunir → Fabriquer et Fabriquer → Fini se font tout seuls (ns.avancerPhase), jamais de retour en arrière tout seul ; le
 -- fil va à la main à n'importe quelle phase (ns.allerPhase). Tout changement de lignes ou de choix de case remet en
--- Préparer (enPreparer, sans signal à part : celui des lignes ou du choix suffit). Le Brouillon est toujours en Préparer.
+-- Préparer (enPreparer, sans signal à part : celui des lignes ou du choix suffit). Un projet de passage est toujours en
+-- Préparer.
 function ns.phase(p) return p.phase or "preparer" end
 function ns.projetPhase(p, phase)
   if ns.phase(p) == phase then return end
@@ -73,24 +99,32 @@ end
 local function enPreparer(p) p.phase = nil end
 local oublierFaites -- (plus bas, avec les fabrications faites)
 
--- Lancer (CONTEXT.md) : le projet passe en Réunir et le renvoie. Sur le Brouillon : un vrai projet en Réunir, avec ses lignes
--- et ses choix de case, nommé d'après sa première ligne, et un Brouillon vide le remplace ; nil si le Brouillon est vide.
--- Le fournisseur de l'emplacement peut le refuser (ns.refusLancer) : nil et sa raison, le projet reste en Préparer.
+-- Lancer (CONTEXT.md) : le projet passe en Réunir et le renvoie. Sur un projet de passage : un vrai projet en Réunir, avec
+-- ses lignes et ses choix de case, et un passage vide le remplace ; nil s'il est vide. Le Brouillon le nomme d'après sa
+-- première ligne, Transformations « Transformations 26/11 ». Le fournisseur de l'emplacement peut le refuser (ns.refusLancer) : nil et sa raison, le projet reste en
+-- Préparer.
 function ns.lancer(p)
   local refus = ns.refusLancer(p)
   if refus then return nil, refus end
-  if not ns.estBrouillon(p) then ns.projetPhase(p, "reunir") return p end
-  if #p.lines == 0 then return nil, "le Brouillon est vide, rien à lancer" end
-  local l = p.lines[1]
-  local it = l.id and ns.items()[l.id] -- le nom du catalogue d'abord : le lien d'un objet pas en cache dit « Unknown »
-  local nom = it and it.name or l.id and ns.itemLabel(l.id) or (ns.recipes()[l.recette] or {}).name
-  local q = ns.nouveauProjet({ name = nom and (nom:match("%[(.-)%]") or nom), lines = p.lines, choix = p.choix, phase = "reunir" })
-  ns.viderBrouillon()
+  local cle = ns.estPassage(p)
+  if not cle then ns.projetPhase(p, "reunir") return p end
+  if #p.lines == 0 then return nil, p.name .. " : rien à lancer" end
+  local nom
+  if cle == "brouillon" then
+    local l = p.lines[1]
+    local it = l.id and ns.items()[l.id] -- le nom du catalogue d'abord : le lien d'un objet pas en cache dit « Unknown »
+    nom = it and it.name or l.id and ns.itemLabel(l.id) or (ns.recipes()[l.recette] or {}).name
+    nom = nom and (nom:match("%[(.-)%]") or nom)
+  else
+    nom = p.name .. " " .. date("%d/%m")
+  end
+  local q = ns.nouveauProjet({ name = nom, lines = p.lines, choix = p.choix, phase = "reunir" })
+  ns.viderPassage(p)
   return q
 end
 
--- Le fil : le projet à cette phase, et le projet. Quitter Préparer, c'est lancer d'abord (le Brouillon devient un projet) :
--- refusé (Brouillon vide, ou le fournisseur de l'emplacement), nil et la raison, rien ne bouge.
+-- Le fil : le projet à cette phase, et le projet. Quitter Préparer, c'est lancer d'abord (un passage devient un projet) :
+-- refusé (passage vide, ou le fournisseur de l'emplacement), nil et la raison, rien ne bouge.
 function ns.allerPhase(p, phase)
   if phase ~= "preparer" and ns.phase(p) == "preparer" then
     local q, raison = ns.lancer(p)
@@ -107,7 +141,7 @@ end
 -- lui-même (ns.finiEmplacement : vrai ou faux), lui seul décide de Fini, sans l'arbre : vrai, un projet lancé (Réunir ou
 -- Fabriquer) passe en Fini. Rend true si la phase a changé.
 function ns.avancerPhase(p, res)
-  if ns.estBrouillon(p) then return false end
+  if ns.estPassage(p) then return false end
   local avant, fini = ns.phase(p), ns.finiEmplacement(p)
   if fini and (avant == "reunir" or avant == "fabriquer") then ns.projetPhase(p, "fini") return true end
   if avant == "reunir" and ns.toutReuni(p) then ns.projetPhase(p, "fabriquer") end
@@ -119,7 +153,7 @@ function ns.avancerPhase(p, res)
 end
 
 function ns.projetCourant()
-  if surBrouillon then return ns.brouillon() end
+  if surPassage then return ns.passage(surPassage) end
   local d = db()
   if #d.projets == 0 then ns.nouveauProjet() end
   d.courant = math.min(math.max(1, d.courant or 1), #d.projets)
@@ -143,7 +177,7 @@ end
 -- Le projet d'identité id, affiché ; nil s'il n'existe plus.
 function ns.ouvrirProjet(id)
   local p, i = ns.projet(id)
-  if p then db().courant, surBrouillon = i, false end
+  if p then db().courant, surPassage = i, nil end
   return p
 end
 
@@ -176,7 +210,7 @@ local function resteAFaire(p, recette)
 end
 function ns.compterFabrication(recette)
   if not recette then return nil end
-  local p = not surBrouillon and #db().projets > 0 and ns.projetCourant() or nil
+  local p = not surPassage and #db().projets > 0 and ns.projetCourant() or nil
   if not (p and resteAFaire(p, recette)) then
     p = nil
     for _, q in ipairs(db().projets) do if resteAFaire(q, recette) then p = q break end end
@@ -488,6 +522,13 @@ local function valeurHV(roots, market, total, incomplete)
   end
   if valeur == 0 then return nil end
   return valeur, not incomplete and math.floor(valeur * (1 - PART_HV)) - depot - total or nil
+end
+-- Ce que rapporte la vente d'un objet id à l'HV, par objet, au même compte : son prix le plus bas, moins la part de l'HV et
+-- le dépôt 24 h (sans le minimum d'1 pc) ; nil sans prix. Pour les Transformations (Transformations.lua).
+function ns.venteHV(id, market)
+  local l = market and market.items[id]
+  if not (l and l.min) then return nil end
+  return l.min * (1 - PART_HV) - ns.prixRevente(id) * ((market.depot or {}).rate24 or 0.20)
 end
 
 -- L'arbre d'un projet, comme s'il était seul (tout le stock pour lui, ses lignes l'une après l'autre sur ce stock). p : un

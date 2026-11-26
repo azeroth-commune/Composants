@@ -1076,6 +1076,129 @@ do
 end
 print("Composants : infobulle des objets OK")
 
+-- Les Transformations (CONTEXT.md, #37) : ce que les matières des sacs du personnage connecté rapportent de plus, transformées
+-- (fontes, rouleaux d'étoffe, peaux traitées) avec les recettes qu'il connaît, que vendues telles quelles ; une vente = le prix
+-- le plus bas de l'HV, moins la part de l'HV (5 %) et le dépôt (ici, aucune revente au marchand : rien) ; les ingrédients en
+-- plus au prix d'achat, même dans les sacs. Le calcul rend une Fabrication par bout de chaîne ; l'arbre fait le reste.
+do
+  local function prix(pc) return { min = pc, tiers = { { price = pc, qty = 999 } } } end
+  local RECETTES = {
+    [2657] = { name = "Fonte du cuivre", output = 2840, profession = "Minage", reagents = { { id = 2770, qty = 1 } } },
+    [3304] = { name = "Fonte de l'étain", output = 3576, profession = "Minage", reagents = { { id = 2771, qty = 1 } } },
+    [2659] = { name = "Fonte du bronze", output = 2841, made_min = 2, profession = "Minage", reagents = { { id = 2840, qty = 1 }, { id = 3576, qty = 1 } } },
+    [3307] = { name = "Fonte du fer", output = 3575, profession = "Minage", reagents = { { id = 2772, qty = 1 } } },
+    [3569] = { name = "Fonte de l'acier", output = 3859, profession = "Minage", reagents = { { id = 3575, qty = 1 }, { id = 3857, qty = 1 } } },
+    [3816] = { name = "Peau légère traitée", output = 4231, profession = "Travail du cuir", reagents = { { id = 783, qty = 1 }, { id = 4289, qty = 1 } } },
+    [11479] = { name = "Transmutation : fer en or", output = 3577, profession = "Alchimie", reagents = { { id = 3575, qty = 1 } } },
+  }
+  local vendeurs = AzerothCommuneDB.vendors
+  AzerothCommuneDB.vendors = { [1] = { items = { { id = 3857, price = 500, stack = 1 }, { id = 4289, price = 50, stack = 1 } } } }
+  local function poser(hv, sacs, connues, persos)
+    local t = {}
+    for id, pc in pairs(hv) do t[id] = prix(pc) end
+    donnees({ hv = t, recettes = RECETTES, sacs = sacs, persos = persos })
+    local known = {}
+    for _, k in ipairs(connues) do known[k] = true end
+    AzerothCommuneDB.chars[MOI].recipes = { Minage = { rank = 300, known = known } }
+    return ns.calculTransformations()
+  end
+  local function lignes(r)
+    local t = {}
+    for _, l in ipairs(r.lignes) do t[#t + 1] = l.recette .. "×" .. l.fois end
+    return table.concat(t, " ")
+  end
+  -- Une ligne simple : 58 minerais de fer, la barre plus chère que le minerai, part de l'HV déduite.
+  local r = poser({ [2772] = 100, [3575] = 200 }, { [2772] = 58 }, { 3307 })
+  assert(lignes(r) == "3307×58", lignes(r))
+  assert(r.gain == 58 * (190 - 95), "gain : " .. r.gain)
+  -- L'entrée : ouverte, recalculée (une ligne retirée revient) ; Lancer en fait « Transformations <date> » et une entrée vide
+  -- la remplace ; le Brouillon n'est pas touché.
+  local brouillon = ns.brouillon()
+  brouillon.lines = { { id = 2841, qty = 3 } }
+  local tr = ns.ouvrirPassage("transformations")
+  assert(ns.estPassage(tr) == "transformations" and ns.projetCourant() == tr and #tr.lines == 1 and tr.lines[1].fois == 58, "ouverte, recalculée")
+  for _, q in ipairs(Composants.Projets()) do assert(q ~= tr, "l'entrée dans la liste des projets") end
+  ns.projetRetirer(tr, 1)
+  assert(#tr.lines == 0 and #ns.ouvrirPassage("transformations").lines == 1, "une ligne retirée revient")
+  local lancee = ns.lancer(tr)
+  assert(lancee.name == "Transformations " .. os.date("%d/%m") and ns.phase(lancee) == "reunir" and lancee.lines[1].recette == 3307, lancee.name)
+  assert(#tr.lines == 0 and #brouillon.lines == 1 and brouillon.lines[1].id == 2841, "entrée vidée, Brouillon intact")
+  Composants.Supprimer(lancee.id)
+  ns.viderBrouillon()
+  -- Le minerai plus cher que la barre : rien ; un objet de la chaîne sans prix : rien.
+  assert(lignes(poser({ [2772] = 300, [3575] = 200 }, { [2772] = 58 }, { 3307 })) == "", "minerai plus cher : rien")
+  assert(lignes(poser({ [2772] = 100 }, { [2772] = 58 }, { 3307 })) == "", "barre sans prix : rien")
+  r = poser({ [3575] = 200 }, { [2772] = 58 }, { 3307 })
+  assert(lignes(r) == "" and r.gain == 0, "minerai sans prix : rien")
+  -- Recette que le personnage connecté ne connaît pas (un autre perso, si) : rien.
+  local ALT = "Player-6942-00000A17"
+  r = poser({ [2772] = 100, [3575] = 200 }, { [2772] = 58 }, {},
+    { [ALT] = { nom = "Alt Dupont", recipes = { Minage = { rank = 300, known = { [3307] = true } } } } })
+  assert(lignes(r) == "", "recette d'un autre perso : rien")
+  -- Pas une transformation (une transmutation), même rentable : rien.
+  AzerothCommuneDB.chars = {}
+  donnees({ hv = { [3575] = prix(10), [3577] = prix(5000) }, recettes = RECETTES, sacs = { [3575] = 5 } })
+  AzerothCommuneDB.chars[MOI].recipes = { Alchimie = { rank = 300, known = { [11479] = true } } }
+  assert(#ns.calculTransformations().lignes == 0, "une transmutation n'est pas une transformation")
+
+  -- Chaîne : cuivre et étain dans les sacs, le bronze rapporte plus que les barres → une Fabrication, Fonte du bronze ; l'arbre
+  -- y met Fonte du cuivre et Fonte de l'étain dans les bonnes quantités, avant.
+  local BRONZE = { 2657, 3304, 2659 }
+  r = poser({ [2770] = 10, [2771] = 10, [2840] = 30, [3576] = 30, [2841] = 100 }, { [2770] = 10, [2771] = 10 }, BRONZE)
+  assert(lignes(r) == "2659×10", lignes(r))
+  assert(r.gain == 20 * 95 - 10 * 30 - 10 * 9.5, "gain : l'étain au prix d'achat, même tiré des sacs : " .. r.gain) -- 1 505
+  local p = Composants.NouveauProjet({ name = "Chaîne", lines = r.lignes })
+  local res = ns.projetArbre(p)
+  local cu, sn = res.caseDe.I2840, res.caseDe.I3576
+  assert(cu.crafts == 10 and cu.recipeKey == 2657 and sn.crafts == 10 and sn.recipeKey == 3304, "les fontes du cuivre et de l'étain")
+  assert(res.caseDe.I2770.have[1] == 10 and res.caseDe.I2771.have[1] == 10 and res.total == 0, "les minerais des sacs, rien à acheter")
+  Composants.Supprimer(p.id)
+  -- Répartition gourmande : le bronze (meilleur gain par minerai de cuivre) prend d'abord l'étain des sacs, le reste de
+  -- l'étain se vend en barres (son meilleur bout à lui).
+  local DISPUTE = { [2770] = 10, [2771] = 10, [2840] = 200, [3576] = 30, [2841] = 120 }
+  r = poser(DISPUTE, { [2770] = 10, [2771] = 15 }, BRONZE)
+  assert(lignes(r) == "2659×10 3304×5", lignes(r))
+  -- Sacs épuisés : le bronze avec l'étain acheté rapporte encore plus que la barre de cuivre, on le propose (l'étain manque).
+  r = poser(DISPUTE, { [2770] = 10, [2771] = 4 }, BRONZE)
+  assert(lignes(r) == "2659×10", lignes(r))
+  p = Composants.NouveauProjet({ name = "Étain acheté", lines = r.lignes })
+  local manque = 0
+  for _, row in ipairs((ns.orderNeeds(ns.besoinsArbre(p)))) do
+    if row.id == 2771 or row.id == 3576 then manque = manque + row.need end
+  end
+  assert(manque > 0 and not ns.toutReuni(p), "l'étain qui manque : un Besoin")
+  Composants.Supprimer(p.id)
+
+  -- Ingrédient en plus : le Charbon de l'acier, au prix d'achat dans le gain ; Besoin du projet lancé, et déjà dans les sacs,
+  -- le projet passe tout seul en Fabriquer. Un objet vendu par un marchand (charbon, sel) n'est jamais la matière d'une chaîne.
+  local ACIER = { [2772] = 100, [3575] = 200, [3859] = 1000 }
+  r = poser(ACIER, { [2772] = 20 }, { 3307, 3569 })
+  assert(lignes(r) == "3569×20" and r.gain == 20 * 950 - 20 * 500 - 20 * 95, lignes(r) .. " " .. r.gain)
+  p = Composants.NouveauProjet({ name = "Acier", lines = r.lignes, phase = "reunir" })
+  assert(not ns.toutReuni(p) and not ns.avancerPhase(p), "sans charbon : en Réunir")
+  local charbon
+  for _, row in ipairs((ns.orderNeeds(ns.besoinsArbre(p)))) do charbon = charbon or row.id == 3857 end
+  assert(charbon, "le charbon : un Besoin")
+  Composants.Supprimer(p.id)
+  r = poser(ACIER, { [2772] = 20, [3857] = 20 }, { 3307, 3569 })
+  assert(lignes(r) == "3569×20" and r.gain == 20 * 950 - 20 * 500 - 20 * 95, "charbon des sacs : toujours au prix d'achat")
+  p = Composants.NouveauProjet({ name = "Acier", lines = r.lignes, phase = "reunir" })
+  assert(ns.avancerPhase(p) and ns.phase(p) == "fabriquer", "le charbon dans les sacs : directement en Fabriquer")
+  Composants.Supprimer(p.id)
+  -- Le Sel des peaux : au prix d'achat ; seul dans les sacs, il ne propose rien (il n'achète pas de peaux).
+  AzerothCommuneDB.chars = {}
+  donnees({ hv = { [783] = prix(50), [4231] = prix(200) }, recettes = RECETTES, sacs = { [783] = 10 } })
+  AzerothCommuneDB.chars[MOI].recipes = { ["Travail du cuir"] = { rank = 100, known = { [3816] = true } } }
+  r = ns.calculTransformations()
+  assert(lignes(r) == "3816×10" and r.gain == 10 * (190 - 50 - 47.5), lignes(r) .. " " .. r.gain)
+  commune.Conteneurs = function(garder) return garder("Backpack") and { b = { items = { { id = 4289, count = 30 } } } } or {} end
+  assert(#ns.calculTransformations().lignes == 0, "le sel seul : rien")
+
+  AzerothCommuneDB.vendors = vendeurs
+  commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
+end
+print("Composants : transformations rentables des sacs OK")
+
 -- La TOC : catégorie Métiers, le socle requis (rien d'autre), ses données propres ; jamais tests/ ni check.lua.
 assert(TOC:find("\n## Title: Composants\n", 1, true) and TOC:find("\n## Category: Professions\n## Category-frFR: Métiers\n", 1, true), "titre, catégorie")
 assert(TOC:find("\n## Notes: Chaque objet décomposé en ses composants, jusqu'aux matières premières : l'arbre, vos projets, ce qu'il reste à réunir.\n", 1, true), "notes")

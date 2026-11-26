@@ -15,10 +15,14 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 - **Pour le joueur** : `/composants` (ou `/compo`) ouvre la fenêtre ; `/composants <objet> [quantité] [tout]` l'ajoute au
   projet affiché ; `/composants demo [set|ceinture|hasard]` crée un projet d'essai ; Ctrl+clic droit sur un objet
   n'importe où le met au Brouillon (en tête de la colonne des projets ; « Lancer » en fait un projet, clic droit « Vider le
-  Brouillon » le vide ; on n'y commande rien). Bouton de minicarte et réglages : ceux, communs, d'Azeroth Commune ; les
+  Brouillon » le vide ; on n'y commande rien). Sous le Brouillon, l'entrée **Transformations** porte ce que rapportent de
+  plus les matières des sacs transformées (« Transformations · +3 po 12 », grisé « · rien ») : les fontes, rouleaux
+  d'étoffe et peaux traitées que le personnage connecté connaît, quand vendre le bout de la chaîne rapporte plus que vendre
+  la matière (part de l'HV et dépôt déduits, ingrédients en plus au prix d'achat) ; l'ouvrir recalcule ses Fabrications
+  (une ligne retirée revient), « Lancer » en fait un projet « Transformations 26/11 ». Bouton de minicarte et réglages : ceux, communs, d'Azeroth Commune ; les
   options du calcul (déduire les sacs, la banque, les autres persos ; compter les recettes pas apprises) sont sur la page
   Composants des réglages.
-- **La grande vue** : à gauche, la colonne des projets, toujours visible (le Brouillon, puis chaque projet avec sa phase ;
+- **La grande vue** : à gauche, la colonne des projets, toujours visible (le Brouillon, Transformations, puis chaque projet avec sa phase ;
   clic : l'ouvrir dans la vue de sa phase ; clic droit : Renommer, Supprimer) ; à droite, le nom du projet et le fil, la
   ligne d'ajout (recherche et quantité ; un objet déposé sur la recherche entre aussi), l'arbre, et en bas un seul bouton
   d'action qui suit la phase. Pas de légende : la bulle de chaque case dit d'où vient l'objet.
@@ -41,7 +45,7 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
   Fini : « Tout est fabriqué » s'ajoute à la ligne du projet, et le bouton devient « Clore ».
 - **Infobulle des objets** : au survol d'un objet, « Utilisé dans : <projets> » s'il entre dans l'arbre d'un projet (Brouillon
   compris) et « Fabriqué par : <persos> » si l'un de vos persos connaît une recette qui le fabrique ; rien sinon.
-- **Données propres** : `ComposantsDB` (projets et leur phase, Brouillon, objets en Récolte, options de calcul). Rien de relevé n'y est gardé (ADR 0002 de l'atelier).
+- **Données propres** : `ComposantsDB` (projets et leur phase, Brouillon, Transformations, objets en Récolte, options de calcul). Rien de relevé n'y est gardé (ADR 0002 de l'atelier).
 
 ## Fichiers
 
@@ -49,7 +53,8 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 |---|---|
 | `Donnees.lua` | accès au socle (recettes, inventaires, métiers, HV, noms d'objets), `ComposantsDB` |
 | `Calcul.lua` | « acheter ou fabriquer » : le plan le moins cher d'un objet, choix entre recettes équivalentes, boucles écartées |
-| `Projet.lua` | les projets (identité stable, lignes, choix de case, projet tenu, phases, signal de changement), le Brouillon et Lancer, les cases, les blocs, l'arbre |
+| `Projet.lua` | les projets (identité stable, lignes, choix de case, projet tenu, phases, signal de changement), les projets de passage (Brouillon, Transformations) et Lancer, les cases, les blocs, l'arbre |
+| `Transformations.lua` | les transformations rentables des sacs : la meilleure chaîne de chaque matière, la répartition gourmande, une Fabrication par bout de chaîne |
 | `Fenetre.lua` | la grande vue (Préparer, Fabriquer, Fini) : la colonne des projets, le nom et le fil, la ligne d'ajout, l'arbre (un bloc confié réduit à une case), le bouton d'action (Lancer, Clore) ; la vue de la phase ; les zones de l'emplacement du bloc ; les options du calcul dans les réglages du socle ; Ctrl+clic droit ; `/composants` |
 | `Fabriquer.lua` | la prochaine fabrication du projet affiché : le bouton d'action en Fabriquer, sa case cerclée |
 | `Infobulle.lua` | les lignes « Utilisé dans » / « Fabriqué par » dans l'infobulle des objets |
