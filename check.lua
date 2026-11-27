@@ -801,8 +801,8 @@ end
 print("Composants : Brouillon, Ctrl+clic droit OK")
 
 -- Fabrication (CONTEXT.md) : une ligne « recette × nombre de fois » d'un projet tenu (une tranche de montée de Maîtrise).
--- Sa case racine est toujours fabriquée avec cette recette (ni stock pris, ni achat ; son choix de case ne peut pas être
--- « acheter ») ; une recette sans objet produit (un enchantement) n'a pour cases que ses composants ; dessous, les choix
+-- Sa case racine est toujours fabriquée avec cette recette (ni stock pris, ni achat ; le choix de son objet ne vaut que
+-- pour ses autres cases) ; une recette sans objet produit (un enchantement) n'a pour cases que ses composants ; dessous, les choix
 -- de case restent libres, et ses Besoins comptent le stock de tous les persos comme pour les autres projets.
 do
   local ALT = "Player-6942-00000A17"
@@ -829,9 +829,17 @@ do
   assert(not res.caseDe.T2 and res.caseDe.I10940.qty == 3 and #res.caseDe.I10940.parents == 0, "enchantement : ses composants seulement")
   assert(res.total == 5 * 2 + 5 * 10 + 3 * 50, "le coût : les composants (cuivre fondu, étain, poussière), pas la barre")
   assert(ns.dessinArbre(res).byKey.I10940.col == 0, "la poussière de l'enchantement dessinée à l'étage des lignes")
-  -- Choix de case : la racine refuse « acheter » ; dessous, libres.
-  local ok, raison = Composants.Choix(p, 2841, "acheter")
-  assert(ok == false and type(raison) == "string" and not (p.choix and p.choix[2841]), "la racine ne s'achète pas")
+  -- Choix de case : « acheter » l'objet d'une fabrication ne touche pas sa racine, toujours fabriquée (Composants#9) ; dessous, libres.
+  assert(Composants.Choix(p, 2841, "acheter"), "acheter l'objet d'une fabrication : accepté (ses autres cases)")
+  local achete = Composants.Arbre(p, true).caseDe.T1
+  assert(achete.made == 10 and achete.need == 0 and achete.choix == nil, "la racine reste fabriquée, sans choix affiché")
+  Composants.Choix(p, 2841, nil)
+  -- Tenir refuse des lignes invalides en entier, le projet reste tel quel (Composants#9).
+  local lignesAvant = p.lines
+  for _, bad in ipairs({ { { recette = 2659 } }, { { recette = 999999, fois = 1 } }, { { id = 2841 } } }) do
+    local ok, raison = Composants.Tenir(p, "tenu par Maîtrise", bad)
+    assert(ok == false and type(raison) == "string" and p.lines == lignesAvant, "Tenir : ligne invalide refusée")
+  end
   assert(res.caseDe.I2840.made == 5, "témoin : le cuivre se fond (le minerai est moins cher)")
   assert(Composants.Choix(p, 2840, "acheter") and Composants.Arbre(p, true).caseDe.I2840.made == 0, "dessous, libre : cuivre acheté")
   Composants.Choix(p, 2840, nil)

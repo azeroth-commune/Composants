@@ -541,12 +541,14 @@ test("projet tenu à lignes fabrication : la racine toujours fabriquée, l'encha
         assertEquals(10, barre.node.made, "fabriquée : 5 fontes, 2 barres chacune")
         assertNotNil(de[10940], "la poussière de l'enchantement")
         assertEquals(0, #de[10940].node.parents, "sans case au-dessus")
-        -- La racine : un clic ne la passe pas en « acheter », l'API refuse avec une raison.
+        -- Son champ de quantité : le nombre de fois (ce que la saisie change), pas les 10 barres (Composants#9).
+        assertEquals("5", barre.qty:GetText())
+        -- La racine : un clic ne la passe pas en « acheter » ; par l'API, le choix ne vaut que pour ses autres cases.
         barre:Click()
         assertNil(p.choix and p.choix[2841], "clic sur la racine : aucun choix")
-        local acheter, raison = Composants.Choix(p, 2841, "acheter")
-        assertEquals(false, acheter)
-        assertType("string", raison)
+        assertTrue(Composants.Choix(p, 2841, "acheter"))
+        assertEquals(10, Composants.Arbre(p, true).caseDe.T1.made, "la racine reste fabriquée")
+        Composants.Choix(p, 2841, nil)
         -- Dessous, libre : la barre de cuivre achetée toute faite, puis retour au calcul.
         assertNotNil(de[2840], "la barre de cuivre sous le bronze")
         assertTrue(de[2840].node.made > 0, "témoin : le cuivre se fond")

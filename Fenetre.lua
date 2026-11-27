@@ -777,7 +777,9 @@ local function refresh()
     c.sub:SetText((subText(n):gsub("^ ", "")))
     local target = n.kind == "target" and not lectureSeule() -- son champ de quantité, en Préparer seulement
     c.qty:SetShown(target); c.qty:SetEnabled(target and lignes())
-    if target and not c.qty:HasFocus() then c.qty:SetText(n.qty) end
+    if target and not c.qty:HasFocus() then -- une fabrication : son nombre de fois (ce que la saisie change), pas ses objets
+      c.qty:SetText(n.fabrication and projet().lines[n.index].fois or n.qty)
+    end
     c.sub:SetPoint("TOPLEFT", target and 80 or 40, -20)
     local t = toggleOf(n)
     local sign = lectureSeule() and "" or (n.made > 0 and "–") or (t and "+") or ""

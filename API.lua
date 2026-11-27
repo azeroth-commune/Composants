@@ -28,10 +28,11 @@ Composants = {
   Peut = function(p, quoi) return ns.projetPeut(p, quoi) end,          -- quoi = "lignes" ou "choix"
   -- Projet tenu : Tenir(p, raison, lignes) prend les lignes (les nouvelles, ou nil pour garder celles qu'il a) ; appelé de
   -- nouveau, remet les lignes à jour, les choix de case restent ; Tenir(p, nil) le lâche. Une ligne fabrication
-  -- { recette, fois } (CONTEXT.md) : sa case racine est toujours fabriquée avec cette recette (ni stock, ni achat ;
-  -- Choix(p, son objet, "acheter") refuse) ; sans objet produit (un enchantement), seuls ses composants sont des cases.
-  -- Dessous, les choix de case restent libres.
-  Tenir = function(p, raison, lignes) ns.projetTenir(p, raison, lignes) end,
+  -- { recette, fois } (CONTEXT.md) : sa case racine est toujours fabriquée avec cette recette (ni stock, ni achat ; le
+  -- choix de son objet ne vaut que pour ses autres cases) ; sans objet produit (un enchantement), seuls ses composants sont
+  -- des cases. Dessous, les choix de case restent libres. Renvoie true, ou false, raison : des lignes invalides (recette
+  -- absente de la base, fabrication sans nombre de fois, objet sans quantité) sont refusées, le projet reste tel quel.
+  Tenir = function(p, raison, lignes) return ns.projetTenir(p, raison, lignes) end,
   -- L'arbre et les blocs : p = un projet, ou toute table { lines, choix }. sansStock = true : toutes les recettes, aucun
   -- stock déduit (ce que verrait un artisan) ; sinon les options du calcul (réglages). apports = { [id] = true } facultatif : ces
   -- cases sortent de l'arbre. Renvoie { roots, cases, caseDe, liens, blocs, blocDe, livraisons, total, incomplete, market }.

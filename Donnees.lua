@@ -18,8 +18,8 @@ end
 local function parPerso(t) local d = lib:Lire(t, "tous") return d and d.persos or {} end
 
 -- Recettes : la base des recettes du socle (celles vues dans les fenêtres de métier, puis sa réserve extraite du client
--- pour les objets qu'aucune recette vue ne fabrique). Chaque recette porte sa compétence requise (level) quand la réserve
--- la connaît.
+-- pour les objets qu'aucune recette vue ne fabrique). Chaque recette porte la compétence pour l'apprendre (level), plafonnée
+-- au jaune, quand la réserve la connaît (AzerothCommune#64).
 local nomsDemandes = {} -- recettes dont on a déjà demandé les noms d'objets
 function ns.recipes()
   local recettes = lib:Lire("base des recettes") or {}

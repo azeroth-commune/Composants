@@ -186,10 +186,21 @@ end
 -- celles qu'il a) en donnant une raison ; ajouter, retirer une ligne ou changer une quantité sont alors refusés avec
 -- cette raison telle quelle, les choix de case restent libres. Le projet ne sait pas pourquoi il est tenu ; raison nil :
 -- il est rendu. De nouvelles lignes (une tranche recalculée) le remettent en Préparer ; le rendre ne change pas sa phase.
+-- Des lignes invalides (fabrication sans nombre de fois, recette absente de la base, objet sans quantité) sont refusées en
+-- entier : renvoie true, ou false, raison (le projet n'est alors pas touché).
 function ns.projetTenir(p, raison, lignes)
+  for i, l in ipairs(lignes or {}) do
+    if l.recette then
+      if not ns.recipes()[l.recette] then return false, ("ligne %d : recette %s absente de la base"):format(i, tostring(l.recette)) end
+      if type(l.fois) ~= "number" or l.fois < 1 then return false, ("ligne %d : nombre de fois manquant"):format(i) end
+    elseif not (l.id and type(l.qty) == "number" and l.qty >= 1) then
+      return false, ("ligne %d : ni recette ni objet avec quantité"):format(i)
+    end
+  end
   p.tenu = raison
   if lignes then p.lines, p.faites = lignes, nil; enPreparer(p) end
   signaler(p, "tenu")
+  return true
 end
 
 -- Les fabrications déjà faites d'un projet lancé (p.faites[recette]) : une ligne fabrication n'en demande plus que
@@ -268,14 +279,9 @@ function ns.projetRetirer(p, i)
 end
 
 -- choix = "fabriquer" (« + », décomposer), "acheter" (« – », tout fait) ou nil (le calcul des prix décide) ; libre
--- même dans un projet tenu, sauf « acheter » l'objet d'une fabrication du projet : sa case racine est toujours fabriquée.
+-- même dans un projet tenu. La case racine d'une fabrication l'ignore (toujours fabriquée) : le choix ne vaut que pour
+-- les autres apparitions de l'objet, composant d'une autre ligne (Composants#9).
 function ns.projetChoix(p, id, choix)
-  if choix == "acheter" then
-    for _, l in ipairs(p.lines) do
-      local r = l.recette and ns.recipes()[l.recette]
-      if r and r.output == id then return false, "toujours fabriqué : une fabrication de ce projet" end
-    end
-  end
   p.choix = p.choix or {}
   p.choix[id] = choix
   if not next(p.choix) then p.choix = nil end
@@ -341,6 +347,7 @@ local function cases(roots, choix)
     if r.id then
       local t = nodeOf("T" .. i, "target", r.id)
       t.index, t.fabrication, t.faites = i, r.fabrication, r.faites -- faites : les objets déjà fabriqués de cette ligne
+      if r.fabrication then t.choix = nil end -- toujours fabriquée : le choix de l'objet vaut pour ses autres cases
       add(t, r)
     else -- une fabrication sans objet produit (un enchantement) : seulement ses composants, sans case au-dessus
       for _, part in ipairs(r.parts) do add(nodeOf("I" .. part.id, "item", part.id), part) end
