@@ -55,7 +55,7 @@ vos projets, ce qu'il reste à réunir. Glossaire : `CONTEXT.md`.
 | `Calcul.lua` | « acheter ou fabriquer » : le plan le moins cher d'un objet, choix entre recettes équivalentes, boucles écartées |
 | `Projet.lua` | les projets (identité stable, lignes, choix de case, projet tenu, phases, signal de changement), les projets de passage (Brouillon, Transformations) et Lancer, les cases, les blocs, l'arbre |
 | `Transformations.lua` | les transformations rentables des sacs : la meilleure chaîne de chaque matière, la répartition gourmande, une Fabrication par bout de chaîne |
-| `Fenetre.lua` | la grande vue (Préparer, Fabriquer, Fini) : la colonne des projets, le nom et le fil, la ligne d'ajout, l'arbre (un bloc confié réduit à une case), le bouton d'action (Lancer, Clore) ; la vue de la phase ; les zones de l'emplacement du bloc ; les options du calcul dans les réglages du socle ; Ctrl+clic droit ; `/composants` |
+| `Fenetre.lua` | la grande vue (Préparer, Fabriquer, Fini) : la colonne des projets, le nom et le fil, la ligne d'ajout, l'arbre (placé et tracé par l'Arbre du socle ; ses cases, un bloc confié réduit à une case), le bouton d'action (Lancer, Clore) ; la vue de la phase ; les zones de l'emplacement du bloc ; les options du calcul dans les réglages du socle ; Ctrl+clic droit ; `/composants` |
 | `Fabriquer.lua` | la prochaine fabrication du projet affiché : le bouton d'action en Fabriquer, sa case cerclée |
 | `Infobulle.lua` | les lignes « Utilisé dans » / « Fabriqué par » dans l'infobulle des objets |
 | `Besoins.lua` | les Besoins du projet affiché (Réunir) : réuni = dans les sacs (sans la part confiée) ; leur fenêtre, l'emplacement des Besoins, la bascule « Achat » / « Récolte », la liste d'achats d'Auctionator |
