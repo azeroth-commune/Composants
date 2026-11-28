@@ -17,18 +17,16 @@ local _, ns = ...
 local W, H_FEN = 720, 400 -- taille de départ et minimum (AzerothCommune.Fenetre) : le cas courant ; l'arbre se zoome pour tenir, la poignée pour un gros arbre
 local COL_W, X0 = 180, 200 -- la colonne des projets, et le bord gauche de ce qui est à sa droite
 local TOP_CONTENU = 30 -- le contenu commence sous la barre de titre du gabarit
-local NODE_W, NODE_H, GAP, TOP = 190, 42, 8, 36 -- le haut laisse la place à la ligne du projet et au nom du premier artisan
-local RELAY = 10 -- place réservée à un lien qui traverse un étage
-local BAND_GAP = 28 -- entre les rectangles de deux artisans (la place de leur nom et de l'emplacement, haut de 16)
-local MARGIN = 10   -- à gauche et à droite : le rectangle d'un artisan dépasse ses cases de 6
-local STEP = NODE_H + GAP
+-- Les tailles de l'arbre, passées à l'Arbre du socle (AzerothCommune.PlacerArbre) ; le haut (36) laisse la place
+-- à la ligne du projet et au nom du premier artisan, l'écart entre deux bandes (28) à leur nom et à l'emplacement (haut de 16).
+local NODE_W, NODE_H, TOP, MARGIN = 190, 42, 36, 10
 local COLORS = {
   { 0.35, 0.80, 0.45 }, { 0.35, 0.60, 1.00 }, { 0.64, 0.21, 0.93 }, -- sacs, banque, autres persos (le violet épique du jeu)
   fabriquer = { 0.95, 0.65, 0.25 }, buy = { 0.60, 0.60, 0.62 }, none = { 0.90, 0.30, 0.30 }, target = { 1.00, 0.82, 0.00 },
   apport = { 0.30, 0.80, 0.85 },
 }
 
-local frame, content, scroll
+local frame, arbre -- arbre : l'Arbre du socle (AzerothCommune.Arbre), sa toile qui défile
 -- Le fournisseur des emplacements (API.lua), si ce projet en a : jamais un projet de passage (on n'y commande rien), qui ne
 -- lui est donc jamais passé.
 local function F(p) return not ns.estPassage(p) and ns.fournisseur or nil end
@@ -93,24 +91,14 @@ function ns.finiEmplacement(p)
 end
 -- Les cases que le fournisseur dit fournies par un autre (nil sans lui) : elles sortent de l'arbre.
 function ns.apportsEmplacement(p) return ns.demander(p, "apports", p) end
--- Vue du dessin : zoom (× l'échelle qui fait tout tenir en largeur) et décalage, en unités du dessin.
-local view = { zoom = 1, x = 0, y = 0, fit = 1 }
-local function applyView()
-  if not content then return end
-  view.zoom = math.max(0.25, math.min(3, view.zoom))
-  content:SetScale(view.fit * view.zoom)
-  content:ClearAllPoints()
-  content:SetPoint("TOPLEFT", scroll, "TOPLEFT", view.x, view.y) -- décalage dans l'échelle du dessin
-end
 -- Couleur de chaque artisan, dans l'ordre de la liste (ton perso d'abord) ; rouge = personne ne sait le faire.
 local CRAFTER_COLORS = { { 1.00, 0.82, 0.00 }, { 0.30, 0.80, 0.85 }, { 0.95, 0.65, 0.25 }, { 0.95, 0.45, 0.75 }, { 0.45, 0.85, 0.58 } }
-local boxes = {}
 -- Étiquettes des livraisons entre artisans : survol = la liste.
 local orderTags = {}
 local function bandName(b) return b == "reste" and "toi" or tostring(b) end
 local function newOrderTag()
-  local t = CreateFrame("Button", nil, content, "TooltipBackdropTemplate") -- le fond des bulles du jeu, bord à la couleur du métier
-  t:SetFrameLevel(content:GetFrameLevel() + 5)
+  local t = CreateFrame("Button", nil, arbre.toile, "TooltipBackdropTemplate") -- le fond des bulles du jeu, bord à la couleur du métier
+  t:SetFrameLevel(arbre.toile:GetFrameLevel() + 5)
   t.text = t:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   t.text:SetPoint("LEFT", 6, 0)
   t.text:SetJustifyH("LEFT")
@@ -126,13 +114,12 @@ local function newOrderTag()
   t:SetScript("OnLeave", function() GameTooltip:Hide() end)
   return t
 end
-local cards, lines, labels = {}, {}, {}
 -- Les zones de l'emplacement du bloc (API.lua) : des cadres vides que le fournisseur remplit à chaque dessin. Une bande
 -- (haute de 16, sur une ligne de titre ; le fournisseur règle sa largeur) ou une case (à la place d'un bloc confié) :
 -- jamais la même zone pour les deux.
 local function newZone(case, parent)
-  local z = CreateFrame("Frame", nil, parent or content, case and "InsetFrameTemplate" or nil) -- une case : le fond en retrait d'une case
-  z:SetFrameLevel(content:GetFrameLevel() + 5)
+  local z = CreateFrame("Frame", nil, parent or arbre.toile, case and "InsetFrameTemplate" or nil) -- une case : le fond en retrait d'une case
+  z:SetFrameLevel(arbre.toile:GetFrameLevel() + 5)
   z.emplacement = true
   if case then
     z:SetSize(NODE_W, NODE_H)
@@ -201,65 +188,8 @@ function ns.fil(parent, x, y)
   end
 end
 
----------------------------------------------------------------------------------------------------
--- Hauteurs. Chaque case (ou relais) vise le milieu de ses voisins, sans chevauchement (de gauche à droite, puis retour).
--- Un relais ne prend que la hauteur d'un lien. bands (facultatif) = clés de bande dans l'ordre, n.band sur chaque nœud :
--- chaque bande est placée seule (voisins de sa bande seulement), puis les bandes sont empilées, BAND_GAP entre elles.
--- Une bande tient donc dans un rectangle ; un lien d'une bande à l'autre ne passe qu'entre deux étages.
-function ns.layoutGraph(g, bands)
-  local last, up, down = g.cols - 1, g.up, g.down
-  local function half(n) return n.kind == "relay" and RELAY / 2 or NODE_H / 2 end
-  local function size(n) return n.kind == "relay" and RELAY or STEP end
-  local function bandOf(n) -- (pas « bands and n.band or 1 » : la bande « personne » a la clé false)
-    if bands then return n.band end
-    return 1
-  end
-  local offset, any = 0, false
-  for _, key in ipairs(bands or { 1 }) do
-    local cols, members = {}, {}
-    for c = 0, last do cols[c] = {} end
-    for _, n in ipairs(g.all) do
-      if bandOf(n) == key then table.insert(cols[n.col], n); members[#members + 1] = n end
-    end
-    if #members > 0 then
-      local function aim(n, around, fallback)
-        local s, k = 0, 0
-        for _, v in ipairs(around) do
-          if bandOf(v) == key then s, k = s + v.y + half(v), k + 1 end
-        end
-        if k == 0 then return fallback end
-        return s / k - half(n)
-      end
-      local function place(col)
-        table.sort(col, function(a, b) if a.w ~= b.w then return a.w < b.w end return a.key < b.key end)
-        local prev
-        for _, n in ipairs(col) do
-          n.y = (prev and n.w < prev.y + size(prev)) and prev.y + size(prev) or n.w
-          prev = n
-        end
-      end
-      table.sort(cols[0], function(a, b) return (a.index or 0) < (b.index or 0) end)
-      for i, n in ipairs(cols[0]) do n.w = (i - 1) * STEP end
-      place(cols[0])
-      for c = 1, last do
-        for _, n in ipairs(cols[c]) do n.w = aim(n, up[n], 0) end
-        place(cols[c])
-      end
-      for c = last - 1, 0, -1 do
-        for _, n in ipairs(cols[c]) do n.w = aim(n, down[n], n.y) end
-        place(cols[c])
-      end
-      local minY, maxY = math.huge, -math.huge
-      for _, n in ipairs(members) do minY, maxY = math.min(minY, n.y), math.max(maxY, n.y + 2 * half(n)) end
-      if any then offset = offset + BAND_GAP end
-      for _, n in ipairs(members) do n.y = n.y - minY + offset end
-      offset, any = offset + maxY - minY, true
-    end
-  end
-  g.height = offset
-end
-
--- Le dessin de l'arbre d'un projet (res = ns.projetArbre, Projet.lua), sans rien afficher (testé hors jeu dans check.lua).
+-- Le dessin de l'arbre d'un projet (res = ns.projetArbre, Projet.lua), sans rien afficher (testé hors jeu dans check.lua) ;
+-- le placement (étages, relais, bandes empilées) est celui de l'Arbre du socle (AzerothCommune.PlacerArbre).
 -- Étages : les lignes du projet en 0 (et les composants d'un enchantement, qui n'a pas de case), un objet juste à droite
 -- de son parent le plus à droite. Bandes : un bloc = ses cases + ce qui n'est pas fabriqué sous elles (rattaché à son
 -- premier parent), puis le reste (acheté ou en stock).
@@ -319,61 +249,25 @@ end
 
 function ns.dessinArbre(res, confies)
   local list, edges = ns.reduire(res, confies)
-  local parents = {}
-  for _, n in ipairs(list) do parents[n] = {} end
-  for _, e in ipairs(edges) do table.insert(parents[e.to], e.from) end
-  local last = 0
-  for _, n in ipairs(list) do n.col = n.kind == "target" and 0 or 1 end
-  for _ = 1, #list do -- ponytail: relaxation O(n²), assez pour quelques dizaines de cases ; s'arrête sur une boucle
-    local changed = false
-    for _, n in ipairs(list) do
-      if n.kind == "item" then
-        local c = #parents[n] == 0 and 0 or 1
-        for _, p in ipairs(parents[n]) do c = math.max(c, p.col + 1) end
-        if c ~= n.col then n.col, changed = c, true end
-      end
-    end
-    if not changed then break end
-  end
-  for _, n in ipairs(list) do last = math.max(last, n.col) end
-
-  -- Un lien qui saute des étages passe par un relais dans chacun (pas de case, juste sa place) : les cases de ces
-  -- étages s'écartent pour lui, et il ne passe jamais sous une case. e.path = départ, relais…, arrivée.
-  local all, up, down = {}, {}, {}
-  for _, n in ipairs(list) do all[#all + 1], up[n], down[n] = n, {}, {} end
-  for _, e in ipairs(edges) do
-    e.path = { e.from }
-    for c = e.from.col + 1, e.to.col - 1 do
-      local r = { key = "R" .. e.from.key .. ">" .. e.to.key .. ":" .. c, kind = "relay", col = c }
-      all[#all + 1], up[r], down[r] = r, {}, {}
-      e.path[#e.path + 1] = r
-    end
-    e.path[#e.path + 1] = e.to
-    for i = 2, #e.path do
-      table.insert(down[e.path[i - 1]], e.path[i]); table.insert(up[e.path[i]], e.path[i - 1])
-    end
-    e.first, e.last = e.path[2], e.path[#e.path - 1]
-  end
-  local g = { nodes = list, edges = edges, cols = last + 1, byKey = res.caseDe, all = all, up = up, down = down,
-    groups = res.blocs, groupOf = res.blocDe, livraisons = res.livraisons }
-
-  local blocOf = {}
+  -- La bande de chaque case : son bloc ; une ligne fabrication finie reste dans son étape ; sinon celle de son premier
+  -- parent (ce qui n'est pas fabriqué sous un bloc y est rattaché), le reste (acheté ou en stock) sans parent.
+  local blocOf, premier, bandeDe = {}, {}, {}
   for _, grp in ipairs(res.blocs) do for _, n in ipairs(grp.cases) do blocOf[n] = grp.key end end
-  local sorted = {}
-  for _, n in ipairs(all) do sorted[#sorted + 1] = n end
-  table.sort(sorted, function(x, y) return x.col < y.col end)
-  for _, n in ipairs(sorted) do
-    if blocOf[n] then n.band = blocOf[n]
-    elseif n.faites and n.made == 0 and n.recipe and res.blocDe[n.recipe.profession] and not (confies and confies[n.recipe.profession]) then
-      n.band = n.recipe.profession -- une ligne fabrication finie reste dans son étape
-    else
-      n.band = "reste"
-      for _, p in ipairs(up[n]) do if p.band ~= nil then n.band = p.band break end end
+  for _, e in ipairs(edges) do premier[e.to] = premier[e.to] or e.from end
+  local function bande(n, k)
+    if bandeDe[n] == nil then
+      if blocOf[n] then bandeDe[n] = blocOf[n]
+      elseif n.faites and n.made == 0 and n.recipe and res.blocDe[n.recipe.profession] and not (confies and confies[n.recipe.profession]) then
+        bandeDe[n] = n.recipe.profession
+      elseif premier[n] and k <= #list then bandeDe[n] = bande(premier[n], k + 1)
+      else bandeDe[n] = "reste" end
     end
+    return bandeDe[n]
   end
-  local order = {}
-  for i, grp in ipairs(g.groups) do
-    grp.index, order[#order + 1] = i, grp.key
+  for _, n in ipairs(list) do n.band = bande(n, 0) end
+  local bandes = {}
+  for i, grp in ipairs(res.blocs) do
+    grp.index = i
     local who = {}
     for _, c in ipairs(grp.crafters) do who[#who + 1] = ("%s %d (%d/%d)"):format(c.name, c.rank, c.known, #grp.recipes) end
     grp.labelSans = ("Étape %d · %s%s · %s"):format(grp.step, grp.key, grp.level > 0 and (" · niv. " .. grp.level .. " requis") or "",
@@ -381,9 +275,15 @@ function ns.dessinArbre(res, confies)
     grp.label = grp.labelSans .. (ns.texteTemps(grp) and (" · " .. ns.texteTemps(grp)) or "")
     grp.cards = {}
     for _, n in ipairs(list) do if n.band == grp.key then grp.cards[#grp.cards + 1] = n end end
+    -- Un rectangle par artisan, à sa couleur, dans l'ordre de la liste (ton perso d'abord) ; rouge = personne ne sait le faire.
+    bandes[i] = { key = grp.key, title = grp.label, grp = grp,
+      color = #grp.crafters > 0 and CRAFTER_COLORS[(i - 1) % #CRAFTER_COLORS + 1] or COLORS.none }
   end
-  order[#order + 1] = "reste"
-  ns.layoutGraph(g, order)
+  bandes[#bandes + 1] = { key = "reste" } -- sans rectangle ni titre
+  -- Le placement (étages, relais, bandes empilées) : l'Arbre du socle. Une case du projet (sa ligne, kind « target ») en
+  -- tête, à son rang.
+  local g = AzerothCommune.PlacerArbre(list, edges, bandes, { largeur = NODE_W, hauteur = NODE_H, haut = TOP, marge = MARGIN })
+  g.byKey, g.groups, g.groupOf, g.livraisons = res.caseDe, res.blocs, res.blocDe, res.livraisons
   return g
 end
 
@@ -431,8 +331,8 @@ end
 
 local function newCard()
   -- Une case : le fond en retrait du jeu, le surlignage du jeu au survol, et tenu sur une case choisie à la main (n.choix).
-  local c = CreateFrame("Button", nil, content, "InsetFrameTemplate")
-  c:SetFrameLevel(content:GetFrameLevel() + 3) -- au-dessus des cadres d'artisans
+  local c = CreateFrame("Button", nil, arbre.toile, "InsetFrameTemplate")
+  c:SetFrameLevel(arbre.toile:GetFrameLevel() + 3) -- au-dessus des cadres d'artisans
   c:SetSize(NODE_W, NODE_H)
   c:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
   c:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -628,38 +528,6 @@ local function subText(n, reste)
   return s
 end
 
-local usedLines, usedLabels = 0, 0
-local function segment(x1, y1, x2, y2, col, thick)
-  usedLines = usedLines + 1
-  local l = lines[usedLines] or content:CreateLine(nil, "BACKGROUND")
-  lines[usedLines] = l
-  l:SetThickness(thick)
-  l:SetColorTexture(col[1], col[2], col[3], 0.45)
-  l:SetStartPoint("TOPLEFT", content, x1, -y1)
-  l:SetEndPoint("TOPLEFT", content, x2, -y2)
-  l:Show()
-end
-
--- Courbe en S entre deux cases (8 segments), quantité juste avant la case d'arrivée.
-local function curve(x1, y1, x2, y2, col, qty, thick)
-  local px, py = x1, y1
-  for i = 1, 8 do
-    local t = i / 8
-    local s = t * t * (3 - 2 * t)
-    local x, y = x1 + (x2 - x1) * t, y1 + (y2 - y1) * s
-    segment(px, py, x, y, col, thick or 2)
-    px, py = x, y
-  end
-  if not qty then return end -- tronçon avant un relais : la quantité n'est écrite qu'à l'arrivée
-  usedLabels = usedLabels + 1
-  local f = labels[usedLabels] or content:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-  labels[usedLabels] = f
-  f:ClearAllPoints()
-  f:SetPoint("RIGHT", content, "TOPLEFT", x2 - 3, -y2 + 6)
-  f:SetText("×" .. qty)
-  f:Show()
-end
-
 local headers = {}
 -- Une durée en clair : « 45 s », « 2 min », « 1 h 05 » ; vif (un compte à rebours) : les secondes sous 10 min, « 2 min 40 s ».
 -- ponytail: la même que celle de Maîtrise (Fenetre.lua) ; au socle au troisième usage.
@@ -681,10 +549,10 @@ function ns.texteTemps(t, ecoule)
 end
 
 local function header(i, x, text)
-  local h = headers[i] or content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  local h = headers[i] or arbre.toile:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   headers[i] = h
   h:ClearAllPoints()
-  h:SetPoint("TOPLEFT", content, "TOPLEFT", MARGIN + x, 0)
+  h:SetPoint("TOPLEFT", arbre.toile, "TOPLEFT", MARGIN + x, 0)
   h:SetText(text)
   h:Show()
 end
@@ -702,8 +570,31 @@ tic = function()
   local b = vif.bloc
   if b then
     local t = ns.texteTemps(b.grp, ecoule)
-    b.name:SetText(b.grp.labelSans .. (t and (" · " .. t) or ""))
+    b.title:SetText(b.grp.labelSans .. (t and (" · " .. t) or ""))
   end
+end
+
+-- La fonction de case donnée à l'Arbre (AzerothCommune.Arbre) : crée la case la première fois (c = nil), la remplit.
+local function remplirCase(n, c)
+  c = c or newCard()
+  c.node = n
+  local k = stateColor(n)
+  c.accent:SetColorTexture(k[1], k[2], k[3], 0.9)
+  c.icon:SetTexture(C_Item.GetItemIconByID(n.id))
+  c.name:SetText(ns.itemLabel(n.id))
+  c.sub:SetText((subText(n):gsub("^ ", "")))
+  local target = n.kind == "target" and not lectureSeule() -- son champ de quantité, en Préparer seulement
+  c.qty:SetShown(target); c.qty:SetEnabled(target and lignes())
+  if target and not c.qty:HasFocus() then -- une fabrication : son nombre de fois (ce que la saisie change), pas ses objets
+    c.qty:SetText(n.fabrication and projet().lines[n.index].fois or n.qty)
+  end
+  c.sub:SetPoint("TOPLEFT", target and 80 or 40, -20)
+  local t = toggleOf(n)
+  local sign = lectureSeule() and "" or (n.made > 0 and "–") or (t and "+") or ""
+  c.toggle:SetText(n.choix and ("|cffffd100" .. sign .. "|r") or sign)
+  if n.choix then c:LockHighlight() else c:UnlockHighlight() end
+  bar(c, n)
+  return c
 end
 
 local function refresh()
@@ -718,15 +609,6 @@ local function refresh()
   if entier then g.height = NODE_H end
   local roots, market, total, incomplete = res.roots, res.market, res.total, res.incomplete
   frame.syncProjet()
-
-  -- Les étages s'étalent sur la largeur ; trop nombreux, le dessin rétrécit pour tenir (puis molette pour zoomer).
-  local avail = scroll:GetWidth()
-  if avail < 100 then avail = W - X0 - 14 end -- pas encore mis en page
-  local spacing = g.cols > 1 and math.max(NODE_W + 44, (avail - NODE_W - 2 * MARGIN) / (g.cols - 1)) or 0
-  local width = NODE_W + spacing * (g.cols - 1) + 2 * MARGIN
-  view.fit = math.min(1, avail / width)
-  content:SetSize(width, math.max(1, (g.height + TOP + 10)))
-  applyView()
 
   for _, h in ipairs(headers) do h:Hide() end
   if #roots == 0 then
@@ -754,111 +636,79 @@ local function refresh()
   zoneProjet:Hide(); caseProjet:Hide()
   if f and #roots > 0 then
     zp:ClearAllPoints()
-    if entier then zp:SetPoint("TOPLEFT", content, "TOPLEFT", MARGIN, -TOP)
+    if entier then zp:SetPoint("TOPLEFT", arbre.toile, "TOPLEFT", MARGIN, -TOP)
     else zp:SetPoint("LEFT", headers[1], "RIGHT", 12, 0); zp:SetWidth(1) end
     zp:Show()
     appel(f.bloc, zp, p, nil, entier)
   end
 
-  local x = function(n) return MARGIN + n.col * spacing end
+  -- Les liens : à la couleur de leur case d'arrivée, la quantité juste avant elle ; une livraison entre blocs : un seul lien
+  -- tracé (le premier), épais, à la couleur du métier qui fabrique.
+  local livree = {}
+  for _, e in ipairs(g.edges) do
+    e.hidden = e.livraison and livree[e.livraison] or nil
+    if e.livraison then livree[e.livraison] = true end
+    e.color, e.thick, e.text = stateColor(e.to), e.livraison and 4 or 2, not e.livraison and e.qty and ("×" .. e.qty) or nil
+    if e.livraison then
+      local grp = g.groupOf[e.livraison.maker]
+      e.color = #grp.crafters > 0 and CRAFTER_COLORS[(grp.index - 1) % #CRAFTER_COLORS + 1] or COLORS.none
+    end
+  end
+  arbre:Dessiner(g) -- l'Arbre du socle : les cases (remplirCase), un rectangle par artisan, les liens
+  local cards = arbre.cadres
   local caseDuBloc = {} -- la case d'un bloc confié : le fournisseur la dessine (plus bas), pas de case de Composants
   for _, grp in ipairs(g.groups or {}) do if confies[grp.key] and grp.case then caseDuBloc[grp.case] = grp end end
-  for i, n in ipairs(g.nodes) do
-    local c = cards[i] or newCard()
-    cards[i] = c
-    c.node = n
-    c:ClearAllPoints()
-    c:SetShown(not caseDuBloc[n])
-    c:SetPoint("TOPLEFT", content, "TOPLEFT", x(n), -(n.y + TOP))
-    local k = stateColor(n)
-    c.accent:SetColorTexture(k[1], k[2], k[3], 0.9)
-    c.icon:SetTexture(C_Item.GetItemIconByID(n.id))
-    c.name:SetText(ns.itemLabel(n.id))
-    c.sub:SetText((subText(n):gsub("^ ", "")))
-    local target = n.kind == "target" and not lectureSeule() -- son champ de quantité, en Préparer seulement
-    c.qty:SetShown(target); c.qty:SetEnabled(target and lignes())
-    if target and not c.qty:HasFocus() then -- une fabrication : son nombre de fois (ce que la saisie change), pas ses objets
-      c.qty:SetText(n.fabrication and projet().lines[n.index].fois or n.qty)
-    end
-    c.sub:SetPoint("TOPLEFT", target and 80 or 40, -20)
-    local t = toggleOf(n)
-    local sign = lectureSeule() and "" or (n.made > 0 and "–") or (t and "+") or ""
-    c.toggle:SetText(n.choix and ("|cffffd100" .. sign .. "|r") or sign)
-    if n.choix then c:LockHighlight() else c:UnlockHighlight() end
-    bar(c, n)
-  end
-  for i = #g.nodes + 1, #cards do cards[i]:Hide() end
+  for i, n in ipairs(g.nodes) do if caseDuBloc[n] then cards[i]:Hide() end end
   -- En Fabriquer, le bouton d'action en bas nomme la prochaine fabrication, sa case cerclée (Fabriquer.lua).
   local function carteDe(id)
     for i = 1, #g.nodes do if cards[i].node.id == id then return cards[i] end end
   end
   ns.rafraichirToutFabriquer(carteDe)
 
-  -- Un rectangle par artisan : toutes ses cases (et ce qui n'est pas fabriqué sous elles), à sa couleur, son nom
-  -- au-dessus (et « recette à apprendre »). Rouge : personne de ta liste ne sait le faire.
-  local usedBoxes, boxOf, usedZones = 0, {}, 0
-  for _, grp in ipairs(g.groups or {}) do
-    local top, bottom, left, right = math.huge, -math.huge, math.huge, -math.huge
-    for _, n in ipairs(grp.cards) do
-      top, bottom = math.min(top, n.y), math.max(bottom, n.y + NODE_H)
-      left, right = math.min(left, x(n)), math.max(right, x(n) + NODE_W)
-    end
-    usedBoxes = usedBoxes + 1
-    local b = boxes[usedBoxes]
-    if not b then
-      b = CreateFrame("Frame", nil, content, "BackdropTemplate")
-      b:SetFrameLevel(content:GetFrameLevel() + 1)
-      b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-      b.name = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-      b.name:SetPoint("BOTTOMLEFT", b, "TOPLEFT", 4, 2)
-      -- Survol du nom : les recettes du métier, leur niveau requis, qui les connaît ; puis qui a le métier.
-      b.hit = CreateFrame("Button", nil, b)
-      b.hit:SetAllPoints(b.name)
-      b.hit:SetScript("OnEnter", function(self)
-        local grp = b.grp
-        GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
-        GameTooltip:AddLine(grp.key)
-        for _, r in ipairs(grp.recipes) do
-          GameTooltip:AddDoubleLine(r.name .. (r.level and (" |cff999999(" .. r.level .. ")|r") or ""),
-            #r.known > 0 and table.concat(r.known, ", ") or "à apprendre", 1, 1, 1, #r.known > 0 and 0.35 or 0.9, #r.known > 0 and 0.8 or 0.3, #r.known > 0 and 0.45 or 0.3)
-        end
-        GameTooltip:AddLine(" ")
-        if #grp.crafters == 0 then GameTooltip:AddLine("Personne de ta liste n'a ce métier", 0.9, 0.3, 0.3) end
-        for _, c in ipairs(grp.crafters) do
-          GameTooltip:AddLine(("%s : niveau %d, %d recette%s sur %d"):format(c.name, c.rank, c.known, c.known > 1 and "s" or "", #grp.recipes), 1, 0.82, 0)
-        end
-        GameTooltip:Show()
-      end)
-      b.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
-      b.zone = newZone(false, b) -- l'emplacement du bloc, sur sa ligne de titre (caché avec lui)
-      b.zone:SetPoint("LEFT", b.name, "RIGHT", 8, 0)
-      boxes[usedBoxes] = b
-    end
-    local k = #grp.crafters > 0 and CRAFTER_COLORS[(grp.index - 1) % #CRAFTER_COLORS + 1] or COLORS.none
-    boxOf[grp.key], b.color = b, k
-    b:SetBackdropColor(k[1], k[2], k[3], 0.06)
-    b:SetBackdropBorderColor(k[1], k[2], k[3], 0.7)
-    b:ClearAllPoints()
-    b:SetPoint("TOPLEFT", content, "TOPLEFT", left - 6, -(top + TOP) + 6)
-    b:SetSize(right - left + 12, bottom - top + 12)
-    b.name:SetTextColor(k[1], k[2], k[3])
-    b.name:SetText(grp.label)
-    b.grp = grp
-    b:Show()
-    -- L'emplacement : une bande sur la ligne de titre ; confié, la case du bloc (à la place de la sienne).
-    b.zone:SetShown(f ~= nil and not grp.case)
-    if b.zone:IsShown() then b.zone:SetWidth(1); appel(f.bloc, b.zone, p, grp, false) end
-    if f and grp.case then
-      usedZones = usedZones + 1
-      local z = zonesCase[usedZones] or newZone(true)
-      zonesCase[usedZones] = z
-      z:ClearAllPoints()
-      z:SetPoint("TOPLEFT", content, "TOPLEFT", x(grp.case), -(grp.case.y + TOP))
-      z:Show()
-      appel(f.bloc, z, p, grp, true)
+  -- Le rectangle de chaque artisan (dessiné par l'Arbre : toutes ses cases, à sa couleur, son nom au-dessus) : survol du
+  -- nom = ses recettes ; l'emplacement du bloc sur sa ligne de titre.
+  local boxOf, usedZones = {}, 0
+  for _, b in ipairs(arbre.rectangles) do
+    local grp = b:IsShown() and b.band.grp
+    if grp then
+      if not b.hit then
+        -- Survol du nom : les recettes du métier, leur niveau requis, qui les connaît ; puis qui a le métier.
+        b.hit = CreateFrame("Button", nil, b)
+        b.hit:SetAllPoints(b.title)
+        b.hit:SetScript("OnEnter", function(self)
+          local grp = b.grp
+          GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+          GameTooltip:AddLine(grp.key)
+          for _, r in ipairs(grp.recipes) do
+            GameTooltip:AddDoubleLine(r.name .. (r.level and (" |cff999999(" .. r.level .. ")|r") or ""),
+              #r.known > 0 and table.concat(r.known, ", ") or "à apprendre", 1, 1, 1, #r.known > 0 and 0.35 or 0.9, #r.known > 0 and 0.8 or 0.3, #r.known > 0 and 0.45 or 0.3)
+          end
+          GameTooltip:AddLine(" ")
+          if #grp.crafters == 0 then GameTooltip:AddLine("Personne de ta liste n'a ce métier", 0.9, 0.3, 0.3) end
+          for _, c in ipairs(grp.crafters) do
+            GameTooltip:AddLine(("%s : niveau %d, %d recette%s sur %d"):format(c.name, c.rank, c.known, c.known > 1 and "s" or "", #grp.recipes), 1, 0.82, 0)
+          end
+          GameTooltip:Show()
+        end)
+        b.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        b.zone = newZone(false, b) -- l'emplacement du bloc, sur sa ligne de titre (caché avec lui)
+        b.zone:SetPoint("LEFT", b.title, "RIGHT", 8, 0)
+      end
+      boxOf[grp.key], b.grp = b, grp
+      -- L'emplacement : une bande sur la ligne de titre ; confié, la case du bloc (à la place de la sienne).
+      b.zone:SetShown(f ~= nil and not grp.case)
+      if b.zone:IsShown() then b.zone:SetWidth(1); appel(f.bloc, b.zone, p, grp, false) end
+      if f and grp.case then
+        usedZones = usedZones + 1
+        local z = zonesCase[usedZones] or newZone(true)
+        zonesCase[usedZones] = z
+        z:ClearAllPoints()
+        z:SetPoint("TOPLEFT", arbre.toile, "TOPLEFT", grp.case.x, -(grp.case.y + TOP))
+        z:Show()
+        appel(f.bloc, z, p, grp, true)
+      end
     end
   end
-  for i = usedBoxes + 1, #boxes do boxes[i]:Hide() end
   for i = usedZones + 1, #zonesCase do zonesCase[i]:Hide() end
   -- Une fabrication en cours dont la case est dessinée : son compte à rebours, tout de suite puis chaque seconde (tic).
   local e = ns.fabricationEnCours()
@@ -867,54 +717,10 @@ local function refresh()
   tic()
   if #roots > 0 then -- un « Étage » que la ligne du projet recouvrirait est sauté (la case de l'étape dit déjà où l'on est)
     local libre = headers[1]:GetStringWidth() + 24 + (zoneProjet:IsShown() and zoneProjet:GetWidth() + 12 or 0)
-    for c = 1, g.cols - 1 do if spacing * c >= libre then header(c + 1, spacing * c, "Étage " .. c) end end
+    for c = 1, g.cols - 1 do if g.ecart * c >= libre then header(c + 1, g.ecart * c, "Étage " .. c) end end
   end
 
-  -- Chaque courbe part et arrive à sa propre hauteur sur le bord de la case, dans l'ordre des cases d'en face :
-  -- pas de croisement au départ, et les quantités ne se marchent pas dessus.
-  -- ponytail: au-delà de 3 courbes sur un même bord, les quantités se rapprochent trop ; agrandir NODE_H si ça arrive
-  local outs, ins, drawn = {}, {}, {}
-  local livree = {}
-  for _, e in ipairs(g.edges) do -- une livraison entre blocs : un seul lien (le premier), épais
-    if not e.livraison or not livree[e.livraison] then drawn[#drawn + 1], livree[e.livraison or e] = e, true end
-  end
-  for _, e in ipairs(drawn) do
-    outs[e.from] = outs[e.from] or {}
-    ins[e.to] = ins[e.to] or {}
-    table.insert(outs[e.from], e)
-    table.insert(ins[e.to], e)
-  end
-  local function spread(map, field, other)
-    for _, es in pairs(map) do
-      table.sort(es, function(a, b)
-        if a[other].y ~= b[other].y then return a[other].y < b[other].y end
-        return a[other].key < b[other].key
-      end)
-      for i, e in ipairs(es) do e[field] = NODE_H * i / (#es + 1) end
-    end
-  end
-  spread(outs, "dy1", "first")
-  spread(ins, "dy2", "last")
-  usedLines, usedLabels = 0, 0
   local usedTags = 0
-  for _, e in ipairs(drawn) do
-    local k = stateColor(e.to)
-    local thick = e.livraison and 4 or 2
-    if e.livraison then
-      local grp = g.groupOf[e.livraison.maker]
-      k = #grp.crafters > 0 and CRAFTER_COLORS[(grp.index - 1) % #CRAFTER_COLORS + 1] or COLORS.none
-    end
-    local px, py = x(e.from) + NODE_W, e.from.y + TOP + e.dy1
-    for i = 2, #e.path - 1 do -- relais : on y entre, on traverse l'étage tout droit, on en ressort
-      local r = e.path[i]
-      local ry = r.y + TOP + RELAY / 2
-      curve(px, py, x(r), ry, k, nil, thick)
-      segment(x(r), ry, x(r) + NODE_W, ry, k, thick)
-      px, py = x(r) + NODE_W, ry
-    end
-    local ex, ey = x(e.to), e.to.y + TOP + e.dy2
-    curve(px, py, ex, ey, k, not e.livraison and e.qty or nil, thick)
-  end
   -- Étiquettes des commandes : sur la ligne de titre du rectangle du métier qui fabrique, à la suite du titre (jamais
   -- sur une case ni sur le titre ; elles peuvent dépasser à droite du rectangle, la ligne de titre y est libre).
   local shelf = {}
@@ -933,12 +739,12 @@ local function refresh()
       local k = b.color
       t:SetBackdropBorderColor(k[1], k[2], k[3], 0.9)
       t:ClearAllPoints()
-      t:SetPoint("LEFT", shelf[b] or (b.zone:IsShown() and b.zone or b.name), "RIGHT", 6, 0)
+      t:SetPoint("LEFT", shelf[b] or (b.zone:IsShown() and b.zone or b.title), "RIGHT", 6, 0)
       shelf[b] = t
       t:Show()
       -- Jamais au-delà du bord droit visible (en unités du dessin) : tronquée, cachée s'il reste moins de 40.
-      local l, cl = t:GetLeft(), content:GetLeft()
-      local place = l and cl and scroll:GetWidth() / content:GetScale() - view.x - 4 - (l - cl)
+      local l, cl = t:GetLeft(), arbre.toile:GetLeft()
+      local place = l and cl and arbre.zone:GetWidth() / arbre.toile:GetScale() - arbre.vue.x - 4 - (l - cl)
       if place and t:GetWidth() > place then
         t:SetWidth(math.max(40, place)); t.text:SetWidth(math.max(40, place) - 12)
         t:SetShown(place >= 40)
@@ -946,8 +752,6 @@ local function refresh()
     end
   end
   for i = usedTags + 1, #orderTags do orderTags[i]:Hide() end
-  for i = usedLines + 1, #lines do lines[i]:Hide() end
-  for i = usedLabels + 1, #labels do labels[i]:Hide() end
   -- La barre d'état s'arrête au bouton d'action visible (sa largeur suit son libellé).
   local action = ComposantsToutFabriquer and ComposantsToutFabriquer:IsShown() and ComposantsToutFabriquer
     or frame.clore:IsShown() and frame.clore or frame.lancerB
@@ -1239,10 +1043,10 @@ local function build()
   clore:SetScript("OnLeave", function() GameTooltip:Hide() end)
   frame.clore = clore
 
-  -- La zone de dessin : molette = zoom autour du curseur, glisser le fond = déplacer, clic du milieu = vue ajustée.
-  scroll = CreateFrame("Frame", nil, frame)
-  scroll:SetPoint("BOTTOMRIGHT", -14, 42)
-  scroll:SetClipsChildren(true)
+  -- La zone de dessin : l'Arbre du socle (molette = zoom autour du curseur, glisser le fond = déplacer, clic du milieu = vue
+  -- ajustée) ; chaque case, Composants la crée et la remplit (remplirCase).
+  arbre = AzerothCommune.Arbre(frame, { case = remplirCase })
+  arbre.zone:SetPoint("BOTTOMRIGHT", -14, 42)
 
   -- Le projet affiché : son nom, le fil, la colonne ; la ligne d'ajout en Préparer ; le bouton d'action de la phase ; le
   -- dessin commence sous ce qui est montré.
@@ -1261,42 +1065,8 @@ local function build()
     lancerB:SetShown(ph == "preparer")
     lancerB:SetEnabled(#projet().lines > 0 and not refus)
     clore:SetShown(ph == "fini")
-    scroll:SetPoint("TOPLEFT", X0 - 4, -TOP_CONTENU - (ph == "preparer" and 58 or 28))
+    arbre.zone:SetPoint("TOPLEFT", X0 - 4, -TOP_CONTENU - (ph == "preparer" and 58 or 28))
   end
-  content = CreateFrame("Frame", nil, scroll)
-  content:SetSize(W - X0 - 14, 1)
-  local function cursor() -- le curseur dans la zone, vers la droite et vers le bas
-    local cx, cy = GetCursorPosition()
-    local es = scroll:GetEffectiveScale()
-    return cx / es - scroll:GetLeft(), scroll:GetTop() - cy / es
-  end
-  scroll:EnableMouseWheel(true)
-  scroll:SetScript("OnMouseWheel", function(_, d)
-    local mx, my = cursor()
-    local s = view.fit * view.zoom
-    local px, py = mx / s - view.x, my / s + view.y -- le point du dessin sous le curseur…
-    view.zoom = view.zoom * (d > 0 and 1.15 or 1 / 1.15)
-    applyView()
-    s = view.fit * view.zoom
-    view.x, view.y = mx / s - px, py - my / s -- …reste sous le curseur
-    applyView()
-  end)
-  scroll:EnableMouse(true)
-  local drag
-  scroll:SetScript("OnMouseDown", function(_, button)
-    if button == "MiddleButton" then view.zoom, view.x, view.y = 1, 0, 0; return applyView() end
-    local mx, my = cursor()
-    drag = { mx = mx, my = my, x = view.x, y = view.y }
-  end)
-  scroll:SetScript("OnMouseUp", function() drag = nil end)
-  scroll:SetScript("OnUpdate", function()
-    if not drag then return end
-    if not IsMouseButtonDown("LeftButton") and not IsMouseButtonDown("RightButton") then drag = nil return end
-    local mx, my = cursor()
-    local s = view.fit * view.zoom
-    view.x, view.y = drag.x + (mx - drag.mx) / s, drag.y - (my - drag.my) / s -- le dessin suit la souris
-    applyView()
-  end)
 
   frame.status = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   frame.status:SetPoint("BOTTOMLEFT", X0, 17)
