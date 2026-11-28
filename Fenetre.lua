@@ -17,7 +17,7 @@ local _, ns = ...
 local W, H_FEN = 720, 400 -- taille de départ et minimum (AzerothCommune.Fenetre) : le cas courant ; l'arbre se zoome pour tenir, la poignée pour un gros arbre
 local COL_W, X0 = 180, 200 -- la colonne des projets, et le bord gauche de ce qui est à sa droite
 local TOP_CONTENU = 30 -- le contenu commence sous la barre de titre du gabarit
--- Les tailles de l'arbre : celles par défaut de l'Arbre du socle (AzerothCommune.PlacerArbre) ; le haut (36) laisse la place
+-- Les tailles de l'arbre, passées à l'Arbre du socle (AzerothCommune.PlacerArbre) ; le haut (36) laisse la place
 -- à la ligne du projet et au nom du premier artisan, l'écart entre deux bandes (28) à leur nom et à l'emplacement (haut de 16).
 local NODE_W, NODE_H, TOP, MARGIN = 190, 42, 36, 10
 local COLORS = {
@@ -282,7 +282,7 @@ function ns.dessinArbre(res, confies)
   bandes[#bandes + 1] = { key = "reste" } -- sans rectangle ni titre
   -- Le placement (étages, relais, bandes empilées) : l'Arbre du socle. Une case du projet (sa ligne, kind « target ») en
   -- tête, à son rang.
-  local g = AzerothCommune.PlacerArbre(list, edges, bandes)
+  local g = AzerothCommune.PlacerArbre(list, edges, bandes, { largeur = NODE_W, hauteur = NODE_H, haut = TOP, marge = MARGIN })
   g.byKey, g.groups, g.groupOf, g.livraisons = res.caseDe, res.blocs, res.blocDe, res.livraisons
   return g
 end
