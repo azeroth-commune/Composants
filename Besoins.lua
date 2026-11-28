@@ -24,13 +24,14 @@ function ns.besoinsArbre(p, opts)
 end
 
 -- Réuni (Phase, CONTEXT.md) : chaque ligne des Besoins est dans les sacs (la banque et les autres persos ne comptent pas),
--- aucune recette n'est à apprendre (il faut l'avoir pour fabriquer, comme les composants) et ce que le fournisseur de
+-- aucune recette n'est à apprendre (il faut l'avoir pour fabriquer, comme les composants), sauf celle dont le patron est
+-- dans les sacs (elle s'apprend au premier bouton de Fabriquer), et ce que le fournisseur de
 -- l'emplacement a pris en charge est arrivé (ns.closEmplacement). C'est la condition de Réunir → Fabriquer
 -- (ns.avancerPhase, Projet.lua).
 local function reuni(p, res)
   if #p.lines == 0 or not ns.closEmplacement(p) then return false end
   local rows, recettes = ns.orderNeeds(res)
-  if #recettes > 0 then return false end
+  for _, r in ipairs(recettes) do if not r.enSac then return false end end
   for _, r in ipairs(rows) do if r.have[1] < r.required then return false end end
   return true
 end
@@ -117,6 +118,13 @@ function ns.recipeItem(name)
   return found or nil
 end
 
+-- Le patron (plans, formule…) d'une recette s'il est dans les sacs, sinon nil : elle ne retient plus en Réunir, elle
+-- s'apprend au premier bouton de Fabriquer (ns.prochaineDuProjet).
+function ns.patronEnSac(recette)
+  local id = recette.patron or ns.recipeItem(recette.name or "")
+  return id and C_Item.GetItemCount(id) > 0 and id or nil
+end
+
 -- La liste des besoins : ce qui ne se fabrique pas dans l'arbre (acheté ou déjà en stock, même la part en stock d'une case
 -- en partie fabriquée ; ni une case fournie par un autre, ni la part confiée, res.horsBesoins), avec combien il en faut et
 -- combien on en a, une ligne par objet (ligne du projet et composant d'une autre additionnés) ; puis les recettes pas
@@ -140,7 +148,7 @@ function ns.orderNeeds(res)
       seen[n.recipe.name] = true
       -- l'objet qui l'apprend (le patron de la base des recettes, sinon par le nom) ; aucun : elle s'apprend chez un maître
       recipes[#recipes + 1] = { name = n.recipe.name, item = n.recipe.patron or ns.recipeItem(n.recipe.name), product = n.id,
-        metier = n.recipe.profession }
+        metier = n.recipe.profession, enSac = ns.patronEnSac(n.recipe) and true or nil }
     end
   end
   table.sort(rows, function(a, b)
@@ -359,7 +367,10 @@ function ns.refreshNeeds()
     -- Elle retient en Réunir jusqu'à ce que le socle la voie apprise (la fenêtre du métier ouverte, TRADE_SKILL_LIST_UPDATE).
     for _, r in ipairs(recipes) do
       local info = "Pour fabriquer " .. ns.itemLabel(r.product)
-      if r.item then
+      if r.item and r.enSac then
+        line(C_Item.GetItemIconByID(r.item), ns.itemLabel(r.item), READY .. " dans tes sacs", r.item,
+          info .. "\nTu l'apprendras au premier bouton de Fabriquer")
+      elseif r.item then
         line(C_Item.GetItemIconByID(r.item), ns.itemLabel(r.item), "à trouver", r.item, info)
       else
         line(C_Item.GetItemIconByID(r.product), "Apprendre : " .. r.name, "chez le maître", r.product,

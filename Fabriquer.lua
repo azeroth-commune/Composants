@@ -93,6 +93,13 @@ end
 -- ponytail: l'arbre est recalculé ici, en plus du dessin de la fenêtre ; à partager si ça se sent.
 function ns.prochaineDuProjet(p, metier)
   local res = ns.projetArbre(p, nil, ns.apportsEmplacement(p))
+  -- Une recette pas apprise dont le patron est dans les sacs : l'apprendre d'abord (etat = "apprendre", f.patron l'objet ;
+  -- le bouton l'utilise). Apprise, le patron quitte les sacs et l'étape passe d'elle-même.
+  -- ponytail: pas pour un enchantement sans case (racine sans objet) ; il reste « Recette inconnue ».
+  for _, n in ipairs(res.cases) do
+    local patron = n.made > 0 and n.unknown and n.recipe and ns.patronEnSac(n.recipe)
+    if patron then return { etat = "apprendre", patron = patron, recette = n.recipe, id = n.id, p = p } end
+  end
   local liste = aFabriquer(res)
   for _, f in ipairs(liste) do
     f.p = p
@@ -125,6 +132,7 @@ end
 function ns.texteToutFabriquer(f, fini, e)
   if e then return ("%s %d/%d…"):format(e.nom, e.fait * e.per, e.n * e.per) end
   if not f then return fini and "Tout est fabriqué" or "Rien à fabriquer" end
+  if f.etat == "apprendre" then return ("Apprendre %s avec %s"):format(f.recette.name or "?", nom(f.patron)) end
   if f.etat == "pret" then return "Fabriquer " .. combien(f, f.n) end
   if f.etat == "ouvrir" then return ("Ouvrir %s : %s"):format(f.recette.profession or "son métier", combien(f, f.n)) end
   if f.etat == "inconnue" then return "Recette inconnue : " .. (f.recette.name or "?") end
@@ -139,6 +147,7 @@ end
 function ns.texteBouton(f, e)
   if e then return ("%s %d/%d…"):format(e.nom, e.fait * e.per, e.n * e.per) end
   if not f then return "Rien à fabriquer" end
+  if f.etat == "apprendre" then return "Apprendre : " .. (f.recette.name or "?") end
   if f.etat == "ouvrir" then return "Ouvre " .. (f.recette.profession or "son métier") end
   if f.etat == "inconnue" then return "Recette inconnue : " .. (f.recette.name or "?") end
   if f.etat == "atelier" then return "Requiert : " .. f.atelier end
@@ -234,6 +243,7 @@ local function construireTout(parent) -- hors combat seulement : un bouton sécu
     GameTooltip:AddLine("Prochaine fabrication du projet", OR[1], OR[2], OR[3])
     GameTooltip:AddLine(ns.texteToutFabriquer(tfF, nil, encours), 1, 1, 1, true)
     if tfF.etat == "ouvrir" and not encours then GameTooltip:AddLine("Clic : ouvre la fenêtre du métier", 0.6, 0.6, 0.6, true)
+    elseif tfF.etat == "apprendre" and not encours then GameTooltip:AddLine("Clic : utilise le patron", 0.6, 0.6, 0.6, true)
     elseif tfF.etat == "pret" and not encours then
       GameTooltip:AddLine("Clic : une fabrication", 0.6, 0.6, 0.6)
       GameTooltip:AddLine(("Clic droit : tout ce que tes sacs permettent (%d)"):format(tfF.n), 0.6, 0.6, 0.6)
@@ -281,10 +291,11 @@ function ns.rafraichirToutFabriquer(carteDe)
   end
   if not tf then construireTout(fenetre) end
   local ouvrir = f and f.etat == "ouvrir" and not encours
-  local actif = encours or ouvrir or (f and f.etat == "pret")
+  local apprendre = f and f.etat == "apprendre" and not encours -- utiliser un objet est protégé : la macro du bouton sécurisé
+  local actif = encours or ouvrir or apprendre or (f and f.etat == "pret")
   tf:SetText(ns.texteBouton(f, encours))
-  tf:SetAttribute("type", ouvrir and "macro" or nil)
-  tf:SetAttribute("macrotext", ouvrir and ("/cast " .. f.recette.profession) or nil)
+  tf:SetAttribute("type", (ouvrir or apprendre) and "macro" or nil)
+  tf:SetAttribute("macrotext", ouvrir and ("/cast " .. f.recette.profession) or apprendre and ("/use item:" .. f.patron) or nil)
   tf:SetEnabled((actif and not encours) and true or false)
   tf:SetDisabledFontObject(encours and GameFontHighlight or GameFontDisable) -- l'avancement se lit, en blanc
   tf:SetParent(fenetre)

@@ -8,7 +8,7 @@ local stubMT = { __index = function() return noop end }
 CreateFrame = function() return setmetatable({}, stubMT) end
 SlashCmdList, StaticPopupDialogs, UISpecialFrames = {}, {}, {}
 C_Timer = { After = noop, NewTicker = noop }
-C_Item = { GetItemInfo = noop, GetItemIconByID = noop }
+C_Item = { GetItemInfo = noop, GetItemIconByID = noop, GetItemCount = function() return 0 end }
 date, time = os.date, os.time
 GetTime = function() return 0 end
 UnitFactionGroup = function() return "Alliance" end
@@ -159,6 +159,8 @@ do
   local orderNeeds = ns.orderNeeds
   ns.orderNeeds = function(res) return (orderNeeds(res)), { { name = "Fonte du fer", product = 3575 } } end
   assert(not ns.toutReuni(pa, OPT), "une recette à apprendre : pas réuni")
+  ns.orderNeeds = function(res) return (orderNeeds(res)), { { name = "Fonte du fer", product = 3575, item = 7990, enSac = true } } end
+  assert(ns.toutReuni(pa, OPT), "son patron dans les sacs : réuni (elle s'apprend en Fabriquer)")
   ns.orderNeeds = orderNeeds
   -- Les anciennes SavedVariables : la liste ordonnée des Besoins est purgée.
   ComposantsDB.besoins = { pa.id, pb.id }
@@ -1010,6 +1012,20 @@ do
   assert(C({ etat = "inconnue", recette = {} }) == "Recette inconnue : ?" and C({ etat = "manque", recette = {} }) == "Il manque un composant")
   assert(C({ etat = "pret", fois = 3, recette = { name = "Enchanter le plastron" } }) == "Enchanter le plastron ×3", "un enchantement : sa recette")
   assert(C(nil) == "Rien à fabriquer")
+  -- La recette du bronze pas apprise, son patron dans les sacs : d'abord l'apprendre (le bouton utilise le patron) ;
+  -- utilisé, il quitte les sacs et la fabrication revient.
+  local PATRON = 99200
+  poser({ [2840] = 13, [3576] = 13, [PATRON] = 1 })
+  AzerothCommuneDB.chars[MOI].recipes.Minage.known[2659] = nil
+  ns.db().options.unlearned = true
+  local rb = ns.recettes and ns.recettes() or (AzerothCommune:Lire("base des recettes"))
+  rb[2659].patron = PATRON
+  f = ns.prochaineDuProjet(p, "Minage")
+  assert(f and f.etat == "apprendre" and f.patron == PATRON and f.id == 2841, tostring(f and f.etat))
+  assert(C(f) == "Apprendre : Fonte du bronze" and T(f) == "Apprendre Fonte du bronze avec " .. nom(PATRON), T(f))
+  sacs[PATRON] = nil
+  assert(ns.prochaineDuProjet(p, "Minage").etat ~= "apprendre", "patron utilisé : l'étape passe")
+  rb[2659].patron, ns.db().options.unlearned = nil, nil
   -- Un projet vide : rien à fabriquer.
   f, fini = ns.prochaineDuProjet(Composants.NouveauProjet({ name = "Vide" }), nil)
   assert(f == nil and not fini and T(f, fini) == "Rien à fabriquer", T(f, fini))
@@ -1047,7 +1063,7 @@ do
   e.fait = 13
   assert(A(e) == 1, "tout fait : pleine")
   GetTime, UnitCastingInfo = gt, nil
-  C_TradeSkillUI, C_Item.GetItemCount = nil, nil
+  C_TradeSkillUI, C_Item.GetItemCount = nil, function() return 0 end
   commune.Conteneurs, AzerothCommuneDB.chars = realContainers, {}
 end
 print("Composants : la prochaine fabrication du projet affiché, le bouton d'action OK")
